@@ -355,6 +355,21 @@ h3 {
   font-weight: 700;
 }
 
+.result-preview {
+  margin: 10px 0 12px;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #182429;
+}
+
+.result-preview img,
+.result-preview video {
+  width: 100%;
+  max-height: 340px;
+  display: block;
+  object-fit: contain;
+}
+
 .progress-track {
   height: 8px;
   border-radius: 999px;

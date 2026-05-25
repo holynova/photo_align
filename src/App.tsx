@@ -407,9 +407,18 @@ function App() {
                   </div>
                   <p>{exportState.text}</p>
                   {exportState.url && (
-                    <a href={exportState.url} download={`face-timeline.${exportState.extension}`} className="download-link">
-                      下载结果
-                    </a>
+                    <>
+                      <div className="result-preview">
+                        {exportState.extension === 'gif' ? (
+                          <img src={exportState.url} alt="导出结果预览" />
+                        ) : (
+                          <video src={exportState.url} controls playsInline />
+                        )}
+                      </div>
+                      <a href={exportState.url} download={`face-timeline.${exportState.extension}`} className="download-link">
+                        下载结果
+                      </a>
+                    </>
                   )}
                 </div>
               )}
