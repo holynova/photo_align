@@ -73,8 +73,6 @@ type DemoManifest = {
 };
 
 const MAX_PHOTOS = 100;
-const MODEL_URL =
-  'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/latest/face_landmarker.task';
 const REPO_URL = 'https://github.com/holynova/photo_align';
 
 const eyeLeftIndices = [33, 133, 159, 145, 153, 154, 155, 173];
@@ -114,12 +112,13 @@ function App() {
   const ensureLandmarker = useCallback(async () => {
     if (landmarkerRef.current) return landmarkerRef.current;
     setAnalysisText('加载本地人脸识别模型');
-    const vision = await FilesetResolver.forVisionTasks(
-      'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22-rc.20250304/wasm'
-    );
+    const baseUrl = new URL(import.meta.env.BASE_URL, window.location.origin);
+    const wasmUrl = new URL('mediapipe/wasm', baseUrl).toString().replace(/\/$/, '');
+    const modelUrl = new URL('mediapipe/models/face_landmarker.task', baseUrl).toString();
+    const vision = await FilesetResolver.forVisionTasks(wasmUrl);
     const options = {
       baseOptions: {
-        modelAssetPath: MODEL_URL,
+        modelAssetPath: modelUrl,
         delegate: 'GPU' as const
       },
       outputFaceBlendshapes: false,
@@ -134,7 +133,7 @@ function App() {
       landmarker = await FaceLandmarker.createFromOptions(vision, {
         ...options,
         baseOptions: {
-          modelAssetPath: MODEL_URL,
+          modelAssetPath: modelUrl,
           delegate: 'CPU'
         }
       });
