@@ -34,6 +34,7 @@ type FaceCandidate = {
   box: { x: number; y: number; width: number; height: number };
   leftEye: Point;
   rightEye: Point;
+  confidence: number;
   landmarks: NormalizedLandmark[];
 };
 
@@ -75,8 +76,9 @@ type DemoManifest = {
 const MAX_PHOTOS = 100;
 const REPO_URL = 'https://github.com/holynova/photo_align';
 
-const eyeLeftIndices = [33, 133, 159, 145, 153, 154, 155, 173];
-const eyeRightIndices = [362, 263, 386, 374, 380, 381, 382, 398];
+const imageLeftEyeIndices = [33, 133, 159, 145, 153, 154, 155, 173];
+const imageRightEyeIndices = [362, 263, 386, 374, 380, 381, 382, 398];
+const DETECTION_MAX_SIZE = 1280;
 
 const defaultSettings: RenderSettings = {
   aspect: '4:5',
@@ -611,7 +613,8 @@ function getImageMimeType(name: string) {
 
 async function analyzePhoto(item: PhotoItem, landmarker: FaceLandmarker): Promise<PhotoItem> {
   const image = await loadImage(item.url);
-  const result = landmarker.detect(image);
+  const detectionSource = prepareDetectionSource(image);
+  const result = landmarker.detect(detectionSource);
   const faces = (result.faceLandmarks ?? []).map((landmarks, id) => createFaceCandidate(id, landmarks));
   const hasDate = Boolean(item.dateText);
 
@@ -628,16 +631,20 @@ async function analyzePhoto(item: PhotoItem, landmarker: FaceLandmarker): Promis
   const chosen = faces[selectedFace];
   const faceSize = Math.max(chosen.box.width, chosen.box.height);
   const eyeDistance = distance(chosen.leftEye, chosen.rightEye);
-  const sideAngle = Math.abs(Math.atan2(chosen.rightEye.y - chosen.leftEye.y, chosen.rightEye.x - chosen.leftEye.x));
+  const eyeAngle = Math.atan2(chosen.rightEye.y - chosen.leftEye.y, chosen.rightEye.x - chosen.leftEye.x);
+  const sideAngle = Math.abs(normalizeAngle(eyeAngle));
 
   let score: Score = '效果很好';
   let warning = item.warning;
   if (faces.length > 1) warning = '检测到多个人，请选择主角';
   if (!hasDate) warning = warning || '缺少拍摄时间';
-  if (faceSize < 0.18 || eyeDistance < 0.05) {
+  if (chosen.confidence < 0.28 || faceSize < 0.1 || eyeDistance < 0.025) {
     score = '建议替换';
-    warning = '脸部较小，可能影响效果';
-  } else if (sideAngle > 0.3) {
+    warning = '眼睛关键点不稳定，建议换更清晰的正脸照片';
+  } else if (faceSize < 0.18 || eyeDistance < 0.05) {
+    score = '可以使用';
+    warning = warning || '脸部较小，已使用高分辨率检测';
+  } else if (sideAngle > 0.35) {
     score = '可能跳动';
     warning = warning || '脸部角度较大';
   } else if (faces.length > 1 || !hasDate) {
@@ -655,17 +662,25 @@ async function analyzePhoto(item: PhotoItem, landmarker: FaceLandmarker): Promis
 }
 
 function createFaceCandidate(id: number, landmarks: NormalizedLandmark[]): FaceCandidate {
-  const leftEye = averageLandmarks(landmarks, eyeLeftIndices);
-  const rightEye = averageLandmarks(landmarks, eyeRightIndices);
+  let leftEye = averageLandmarks(landmarks, imageLeftEyeIndices);
+  let rightEye = averageLandmarks(landmarks, imageRightEyeIndices);
+  if (leftEye.x > rightEye.x) {
+    [leftEye, rightEye] = [rightEye, leftEye];
+  }
   const minX = Math.min(...landmarks.map((point) => point.x));
   const minY = Math.min(...landmarks.map((point) => point.y));
   const maxX = Math.max(...landmarks.map((point) => point.x));
   const maxY = Math.max(...landmarks.map((point) => point.y));
+  const eyeDistance = distance(leftEye, rightEye);
+  const eyeLevel = Math.abs(leftEye.y - rightEye.y);
+  const inBounds = [leftEye, rightEye].every((point) => point.x > 0 && point.x < 1 && point.y > 0 && point.y < 1);
+  const confidence = clamp((eyeDistance / 0.065) * (1 - Math.min(0.7, eyeLevel * 2.2)) * (inBounds ? 1 : 0.25), 0, 1);
   return {
     id,
     landmarks,
     leftEye,
     rightEye,
+    confidence,
     box: {
       x: clamp(minX, 0, 1),
       y: clamp(minY, 0, 1),
@@ -673,6 +688,22 @@ function createFaceCandidate(id: number, landmarks: NormalizedLandmark[]): FaceC
       height: clamp(maxY - minY, 0, 1)
     }
   };
+}
+
+function prepareDetectionSource(image: HTMLImageElement) {
+  const longestSide = Math.max(image.naturalWidth, image.naturalHeight);
+  if (longestSide <= DETECTION_MAX_SIZE) return image;
+
+  const scale = DETECTION_MAX_SIZE / longestSide;
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.round(image.naturalWidth * scale);
+  canvas.height = Math.round(image.naturalHeight * scale);
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  if (!ctx) return image;
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+  return canvas;
 }
 
 async function renderAlignedFrame(canvas: HTMLCanvasElement, photo: PhotoItem, settings: RenderSettings, opacity = 1) {
@@ -864,10 +895,16 @@ function getCanvasSize(aspect: Aspect) {
 
 function paintBackdrop(ctx: CanvasRenderingContext2D, width: number, height: number) {
   const gradient = ctx.createLinearGradient(0, 0, width, height);
-  gradient.addColorStop(0, '#f8f4ec');
-  gradient.addColorStop(0.48, '#edf2f4');
-  gradient.addColorStop(1, '#e5efe6');
+  gradient.addColorStop(0, '#000212');
+  gradient.addColorStop(0.5, '#080a10');
+  gradient.addColorStop(1, '#12131e');
   ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, width, height);
+
+  const glow = ctx.createRadialGradient(width * 0.5, 0, 0, width * 0.5, 0, Math.max(width, height) * 0.75);
+  glow.addColorStop(0, 'rgba(94, 106, 210, 0.22)');
+  glow.addColorStop(1, 'rgba(94, 106, 210, 0)');
+  ctx.fillStyle = glow;
   ctx.fillRect(0, 0, width, height);
 }
 
@@ -893,10 +930,12 @@ function drawDate(ctx: CanvasRenderingContext2D, dateText: string, width: number
   const boxH = 46;
   const x = Math.max(24, width * 0.045);
   const y = height - Math.max(40, height * 0.07);
-  ctx.fillStyle = 'rgba(21, 28, 32, 0.72)';
+  ctx.fillStyle = 'rgba(8, 10, 16, 0.78)';
   roundRect(ctx, x, y - boxH / 2, boxW, boxH, 8);
   ctx.fill();
-  ctx.fillStyle = '#fff';
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.14)';
+  ctx.stroke();
+  ctx.fillStyle = '#f0f3f6';
   ctx.fillText(label, x + padX, y + 1);
   ctx.restore();
 }
@@ -964,6 +1003,10 @@ function midpoint(a: Point, b: Point): Point {
 
 function distance(a: Point, b: Point) {
   return Math.hypot(a.x - b.x, a.y - b.y);
+}
+
+function normalizeAngle(angle: number) {
+  return Math.atan2(Math.sin(angle), Math.cos(angle));
 }
 
 function clamp(value: number, min: number, max: number) {
