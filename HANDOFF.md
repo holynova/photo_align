@@ -1,0 +1,3 @@
+# 开发交接
+
+这是一个完全在浏览器本地处理的人像时间线工具：用户最多导入 100 张照片，MediaPipe Face Landmarker 识别人脸和双眼，EXIF/文件名提供日期，照片按时间排序并对齐后导出 GIF 或视频。当前 React/Vite/TypeScript 原型可构建，主要代码集中在 `src/App.tsx`，样式位于 `src/styles.css`，本地模型位于 `public/mediapipe`，30 张示例入口是 `demo/manifest.json`，GitHub Pages 使用 `npm run build:pages` 输出到 `docs`。接手后请先阅读 `tasks.md`，从阶段 0 和阶段 1 开始，不要先做视觉重写；最高风险是 `buildFrames()` 将所有高清 `ImageData` 保存在内存中，导致 30～100 张导出可能耗尽浏览器内存，同时 GIF 速度被帧数和 delay 重复计算。重构时必须保持完全本地处理、多人选择、日期编辑、跳过照片、网页内预览及 GitHub Pages 子路径兼容。建议小步提交，每完成一个任务更新 `tasks.md` 状态并记录验证结果；至少运行 `npm ci`、`npm run build`，新增测试后运行 `npm test`，发布前再运行 `npm run build:pages` 并在真实浏览器走完 Demo 到导出的完整流程。不要提交 `node_modules`、`dist` 或用户测试照片，也不要覆盖工作区中与当前任务无关的改动。

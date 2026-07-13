@@ -1,6 +1,8 @@
 import { FaceLandmarker, FilesetResolver, type NormalizedLandmark } from '@mediapipe/tasks-vision';
 import exifr from 'exifr';
 import GIFEncoder, { applyPalette, quantize } from 'gifenc';
+import { getExportDurationSeconds, getExportFramePlan, type ExportTransition } from './lib/export-plan';
+import { formatLocalDate, parseDateFromFilename } from './lib/photo-date';
 import {
   AlertTriangle,
   Calendar,
@@ -24,8 +26,10 @@ type Score = '效果很好' | '可以使用' | '可能跳动' | '建议替换' |
 type Aspect = '1:1' | '4:5' | '9:16' | '16:9';
 type CropMode = 'face' | 'shoulders' | 'original';
 type AlignMode = 'natural' | 'strict';
-type TransitionMode = 'none' | 'fade' | 'slow';
-type ExportFormat = 'mp4' | 'gif';
+type TransitionMode = ExportTransition;
+type ExportFormat = 'mp4' | 'webm' | 'gif';
+type VideoFormat = Exclude<ExportFormat, 'gif'>;
+type ImageLoader = (src: string) => Promise<HTMLImageElement>;
 
 type Point = { x: number; y: number };
 
@@ -99,6 +103,10 @@ function App() {
   const [exportState, setExportState] = useState({ running: false, text: '', progress: 0, url: '', extension: 'mp4' });
   const landmarkerRef = useRef<FaceLandmarker | null>(null);
   const previewCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const exportAbortRef = useRef<AbortController | null>(null);
+  const exportUrlRef = useRef('');
+  const photosRef = useRef<PhotoItem[]>([]);
+  const supportedVideoFormats = useMemo(() => getSupportedVideoFormats(), []);
 
   const usablePhotos = useMemo(
     () =>
@@ -157,7 +165,10 @@ function App() {
       setAnalysisText('准备读取照片');
 
       const initialItems = await Promise.all(imageFiles.map((file) => createPhotoItem(file, dateOverrides.get(file.name))));
-      setPhotos(initialItems);
+      setPhotos((current) => {
+        current.forEach((photo) => URL.revokeObjectURL(photo.url));
+        return initialItems;
+      });
       setActiveId(initialItems[0]?.id ?? null);
 
       try {
@@ -220,12 +231,35 @@ function App() {
     void renderPreview();
   }, [renderPreview]);
 
+  useEffect(() => {
+    setSettings((current) => {
+      if (current.format === 'gif' || supportedVideoFormats.includes(current.format)) return current;
+      return { ...current, format: supportedVideoFormats[0] ?? 'gif' };
+    });
+  }, [supportedVideoFormats]);
+
+  useEffect(() => {
+    photosRef.current = photos;
+  }, [photos]);
+
+  useEffect(
+    () => () => {
+      exportAbortRef.current?.abort();
+      if (exportUrlRef.current) URL.revokeObjectURL(exportUrlRef.current);
+      photosRef.current.forEach((photo) => URL.revokeObjectURL(photo.url));
+    },
+    []
+  );
+
   const updatePhoto = (id: string, updater: (photo: PhotoItem) => PhotoItem) => {
     setPhotos((current) => current.map((photo) => (photo.id === id ? updater(photo) : photo)));
   };
 
   const resetAll = () => {
+    exportAbortRef.current?.abort();
     photos.forEach((photo) => URL.revokeObjectURL(photo.url));
+    if (exportUrlRef.current) URL.revokeObjectURL(exportUrlRef.current);
+    exportUrlRef.current = '';
     setPhotos([]);
     setActiveId(null);
     setExportState({ running: false, text: '', progress: 0, url: '', extension: 'mp4' });
@@ -234,29 +268,33 @@ function App() {
 
   const exportVideo = async () => {
     if (!usablePhotos.length) return;
+    if (exportUrlRef.current) URL.revokeObjectURL(exportUrlRef.current);
+    exportUrlRef.current = '';
+    const controller = new AbortController();
+    exportAbortRef.current = controller;
     setExportState({ running: true, text: '准备渲染帧', progress: 0, url: '', extension: settings.format });
 
     try {
-      const frames = await buildFrames(usablePhotos, settings, (progress) => {
-        setExportState((state) => ({ ...state, text: `渲染帧 ${Math.round(progress * 100)}%`, progress: progress * 0.45 }));
-      });
       const output =
         settings.format === 'gif'
-          ? {
-              url: encodeGif(frames, settings, (progress, text) => {
-                setExportState((state) => ({ ...state, text, progress: 0.45 + progress * 0.55 }));
-              }),
-              extension: 'gif'
-            }
-          : await encodeVideoWithMediaRecorder(frames, (progress, text) => {
-              setExportState((state) => ({ ...state, text, progress: 0.45 + progress * 0.55 }));
+          ? await encodeGifStream(usablePhotos, settings, controller.signal, (progress, text) => {
+              setExportState((state) => ({ ...state, text, progress }));
+            })
+          : await encodeVideoStream(usablePhotos, settings, settings.format, controller.signal, (progress, text) => {
+              setExportState((state) => ({ ...state, text, progress }));
             });
+      exportUrlRef.current = output.url;
       setExportState({ running: false, text: '导出完成', progress: 1, url: output.url, extension: output.extension });
     } catch (error) {
       console.error(error);
-      setExportState({ running: false, text: '导出失败，可能是浏览器内存不足或编码器不可用', progress: 0, url: '', extension: settings.format });
+      const text = isAbortError(error) ? '已取消导出' : '导出失败，可能是浏览器内存不足或编码器不可用';
+      setExportState({ running: false, text, progress: 0, url: '', extension: settings.format });
+    } finally {
+      exportAbortRef.current = null;
     }
   };
+
+  const cancelExport = () => exportAbortRef.current?.abort();
 
   return (
     <main className="app-shell">
@@ -387,20 +425,29 @@ function App() {
                 <h3>导出</h3>
               </div>
               <ControlGroup label="格式">
-                {(['mp4', 'gif'] as ExportFormat[]).map((format) => (
+                {(['mp4', 'webm', 'gif'] as ExportFormat[]).map((format) => (
                   <button
                     key={format}
                     className={settings.format === format ? 'seg active' : 'seg'}
+                    disabled={format !== 'gif' && !supportedVideoFormats.includes(format as VideoFormat)}
                     onClick={() => setSettings({ ...settings, format })}
                   >
                     {format.toUpperCase()}
                   </button>
                 ))}
               </ControlGroup>
+              <p className="export-summary">
+                {usablePhotos.length} 张照片，预计 {getExportDurationSeconds(usablePhotos.length, settings.speed, settings.transition).toFixed(1)} 秒
+              </p>
               <button className="primary-button" disabled={exportState.running || !usablePhotos.length} onClick={exportVideo}>
                 {exportState.running ? <Loader2 className="spin" size={18} /> : <Download size={18} />}
                 生成文件
               </button>
+              {exportState.running && (
+                <button className="secondary-button" type="button" onClick={cancelExport}>
+                  取消导出
+                </button>
+              )}
               {exportState.text && (
                 <div className="export-box">
                   <div className="progress-track">
@@ -706,7 +753,13 @@ function prepareDetectionSource(image: HTMLImageElement) {
   return canvas;
 }
 
-async function renderAlignedFrame(canvas: HTMLCanvasElement, photo: PhotoItem, settings: RenderSettings, opacity = 1) {
+async function renderAlignedFrame(
+  canvas: HTMLCanvasElement,
+  photo: PhotoItem,
+  settings: RenderSettings,
+  opacity = 1,
+  load: ImageLoader = loadImage
+) {
   const size = getCanvasSize(settings.aspect);
   canvas.width = size.width;
   canvas.height = size.height;
@@ -714,7 +767,7 @@ async function renderAlignedFrame(canvas: HTMLCanvasElement, photo: PhotoItem, s
   if (!ctx) return;
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   paintBackdrop(ctx, canvas.width, canvas.height);
-  await drawPhoto(ctx, canvas, photo, settings, opacity);
+  await drawPhoto(ctx, canvas, photo, settings, opacity, load);
 }
 
 async function drawPhoto(
@@ -722,10 +775,11 @@ async function drawPhoto(
   canvas: HTMLCanvasElement,
   photo: PhotoItem,
   settings: RenderSettings,
-  opacity = 1
+  opacity = 1,
+  load: ImageLoader = loadImage
 ) {
   const face = photo.faces[photo.selectedFace];
-  const image = await loadImage(photo.url);
+  const image = await load(photo.url);
 
   if (!face) {
     drawContain(ctx, image, canvas.width, canvas.height, opacity);
@@ -768,77 +822,87 @@ function getNaturalNudge(face: FaceCandidate, image: HTMLImageElement, canvas: H
   };
 }
 
-async function buildFrames(photos: PhotoItem[], settings: RenderSettings, onProgress: (progress: number) => void) {
-  const frames: ImageData[] = [];
+async function renderExportFrames(
+  canvas: HTMLCanvasElement,
+  photos: PhotoItem[],
+  settings: RenderSettings,
+  signal: AbortSignal,
+  onFrame: (progress: number, frameNumber: number, totalFrames: number) => Promise<void> | void
+) {
   const size = getCanvasSize(settings.aspect);
-  const canvas = document.createElement('canvas');
   canvas.width = size.width;
   canvas.height = size.height;
   const ctx = canvas.getContext('2d');
-  if (!ctx) return frames;
+  if (!ctx) throw new Error('Canvas context failed');
 
-  const holdFrames = Math.max(3, Math.round(10 / settings.speed));
-  const transitionFrames = settings.transition === 'none' ? 0 : settings.transition === 'slow' ? 8 : 4;
-  const total = photos.length * holdFrames + Math.max(0, photos.length - 1) * transitionFrames;
+  const imageCache = createImageCache();
+  const { holdFrames, transitionFrames, totalFrames } = getExportFramePlan(photos.length, settings.speed, settings.transition);
   let completed = 0;
 
-  for (let index = 0; index < photos.length; index += 1) {
-    for (let hold = 0; hold < holdFrames; hold += 1) {
-      await renderAlignedFrame(canvas, photos[index], settings);
-      frames.push(ctx.getImageData(0, 0, canvas.width, canvas.height));
-      completed += 1;
-      onProgress(completed / total);
-    }
-
-    if (transitionFrames && photos[index + 1]) {
-      for (let step = 1; step <= transitionFrames; step += 1) {
-        const alpha = step / (transitionFrames + 1);
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        paintBackdrop(ctx, canvas.width, canvas.height);
-        await drawPhoto(ctx, canvas, photos[index], settings, 1 - alpha);
-        await drawPhoto(ctx, canvas, photos[index + 1], settings, alpha);
-        frames.push(ctx.getImageData(0, 0, canvas.width, canvas.height));
+  try {
+    for (let index = 0; index < photos.length; index += 1) {
+      for (let hold = 0; hold < holdFrames; hold += 1) {
+        throwIfAborted(signal);
+        await renderAlignedFrame(canvas, photos[index], settings, 1, imageCache.load);
         completed += 1;
-        onProgress(completed / total);
+        await onFrame(completed / totalFrames, completed, totalFrames);
+      }
+
+      if (transitionFrames && photos[index + 1]) {
+        for (let step = 1; step <= transitionFrames; step += 1) {
+          throwIfAborted(signal);
+          const alpha = step / (transitionFrames + 1);
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+          paintBackdrop(ctx, canvas.width, canvas.height);
+          await drawPhoto(ctx, canvas, photos[index], settings, 1 - alpha, imageCache.load);
+          await drawPhoto(ctx, canvas, photos[index + 1], settings, alpha, imageCache.load);
+          completed += 1;
+          await onFrame(completed / totalFrames, completed, totalFrames);
+        }
       }
     }
+  } finally {
+    imageCache.clear();
   }
-
-  return frames;
 }
 
-function encodeGif(frames: ImageData[], settings: RenderSettings, onProgress: (progress: number, text: string) => void) {
-  if (!frames.length) throw new Error('No frames to encode');
+async function encodeGifStream(
+  photos: PhotoItem[],
+  settings: RenderSettings,
+  signal: AbortSignal,
+  onProgress: (progress: number, text: string) => void
+): Promise<{ url: string; extension: 'gif' }> {
   const gif = GIFEncoder({ initialCapacity: 1024 * 1024 });
-  const delay = Math.max(35, Math.round(1000 / 18 / settings.speed));
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  if (!ctx) throw new Error('Canvas context failed');
+  const { frameDurationMs } = getExportFramePlan(photos.length, settings.speed, settings.transition);
 
-  frames.forEach((frame, index) => {
+  await renderExportFrames(canvas, photos, settings, signal, async (progress, frameNumber, totalFrames) => {
+    const frame = ctx.getImageData(0, 0, canvas.width, canvas.height);
     const palette = quantize(frame.data, 128, { format: 'rgb444' });
     const bitmap = applyPalette(frame.data, palette, 'rgb444');
-    gif.writeFrame(bitmap, frame.width, frame.height, { palette, delay, repeat: 0 });
-    onProgress((index + 1) / frames.length, `编码 GIF ${index + 1} / ${frames.length}`);
+    gif.writeFrame(bitmap, frame.width, frame.height, { palette, delay: frameDurationMs, repeat: 0 });
+    onProgress(progress, `编码 GIF ${frameNumber} / ${totalFrames}`);
+    if (frameNumber % 3 === 0) await yieldToBrowser();
   });
 
   gif.finish();
-  return URL.createObjectURL(new Blob([gif.bytes()], { type: 'image/gif' }));
+  return { url: URL.createObjectURL(new Blob([gif.bytes()], { type: 'image/gif' })), extension: 'gif' };
 }
 
-async function encodeVideoWithMediaRecorder(
-  frames: ImageData[],
+async function encodeVideoStream(
+  photos: PhotoItem[],
+  settings: RenderSettings,
+  format: VideoFormat,
+  signal: AbortSignal,
   onProgress: (progress: number, text: string) => void
 ): Promise<{ url: string; extension: string }> {
-  if (!frames.length) throw new Error('No frames to encode');
-  const mimeType = getSupportedVideoMimeType();
+  const mimeType = getSupportedVideoMimeType(format);
   if (!mimeType) throw new Error('MediaRecorder video encoding is not supported');
 
   const canvas = document.createElement('canvas');
-  canvas.width = frames[0].width;
-  canvas.height = frames[0].height;
-  const ctx = canvas.getContext('2d');
-  if (!ctx) throw new Error('Canvas context failed');
-
-  const fps = 24;
-  const stream = canvas.captureStream(fps);
+  const stream = canvas.captureStream(24);
   const chunks: BlobPart[] = [];
   const recorder = new MediaRecorder(stream, {
     mimeType,
@@ -854,24 +918,44 @@ async function encodeVideoWithMediaRecorder(
     recorder.onstop = () => resolve(new Blob(chunks, { type: mimeType }));
   });
 
-  recorder.start();
-  for (let index = 0; index < frames.length; index += 1) {
-    ctx.putImageData(frames[index], 0, 0);
-    onProgress((index + 1) / frames.length, `编码视频 ${index + 1} / ${frames.length}`);
-    await new Promise((resolve) => window.setTimeout(resolve, 1000 / fps));
-  }
-  recorder.stop();
-  stream.getTracks().forEach((track) => track.stop());
-
-  const blob = await done;
-  return {
-    url: URL.createObjectURL(blob),
-    extension: mimeType.includes('mp4') ? 'mp4' : 'webm'
+  const stopRecorder = () => {
+    if (recorder.state !== 'inactive') recorder.stop();
   };
+  signal.addEventListener('abort', stopRecorder, { once: true });
+
+  try {
+    recorder.start();
+    await renderExportFrames(canvas, photos, settings, signal, async (progress, frameNumber, totalFrames) => {
+      onProgress(progress, `编码视频 ${frameNumber} / ${totalFrames}`);
+      await waitForFrame();
+    });
+    stopRecorder();
+    const blob = await done;
+    throwIfAborted(signal);
+    return {
+      url: URL.createObjectURL(blob),
+      extension: format
+    };
+  } finally {
+    signal.removeEventListener('abort', stopRecorder);
+    stopRecorder();
+    stream.getTracks().forEach((track) => track.stop());
+  }
 }
 
-function getSupportedVideoMimeType() {
-  const candidates = ['video/mp4;codecs=avc1.42E01E', 'video/mp4', 'video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'];
+function getSupportedVideoFormats(): VideoFormat[] {
+  if (typeof MediaRecorder === 'undefined' || typeof HTMLCanvasElement === 'undefined' || !HTMLCanvasElement.prototype.captureStream) {
+    return [];
+  }
+  return (['mp4', 'webm'] as VideoFormat[]).filter((format) => Boolean(getSupportedVideoMimeType(format)));
+}
+
+function getSupportedVideoMimeType(format: VideoFormat) {
+  if (typeof MediaRecorder === 'undefined') return '';
+  const candidates =
+    format === 'mp4'
+      ? ['video/mp4;codecs=avc1.42E01E', 'video/mp4']
+      : ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'];
   return candidates.find((candidate) => MediaRecorder.isTypeSupported(candidate)) ?? '';
 }
 
@@ -894,17 +978,7 @@ function getCanvasSize(aspect: Aspect) {
 }
 
 function paintBackdrop(ctx: CanvasRenderingContext2D, width: number, height: number) {
-  const gradient = ctx.createLinearGradient(0, 0, width, height);
-  gradient.addColorStop(0, '#000212');
-  gradient.addColorStop(0.5, '#080a10');
-  gradient.addColorStop(1, '#12131e');
-  ctx.fillStyle = gradient;
-  ctx.fillRect(0, 0, width, height);
-
-  const glow = ctx.createRadialGradient(width * 0.5, 0, 0, width * 0.5, 0, Math.max(width, height) * 0.75);
-  glow.addColorStop(0, 'rgba(94, 106, 210, 0.22)');
-  glow.addColorStop(1, 'rgba(94, 106, 210, 0)');
-  ctx.fillStyle = glow;
+  ctx.fillStyle = '#161711';
   ctx.fillRect(0, 0, width, height);
 }
 
@@ -930,12 +1004,12 @@ function drawDate(ctx: CanvasRenderingContext2D, dateText: string, width: number
   const boxH = 46;
   const x = Math.max(24, width * 0.045);
   const y = height - Math.max(40, height * 0.07);
-  ctx.fillStyle = 'rgba(8, 10, 16, 0.78)';
+  ctx.fillStyle = 'rgba(22, 23, 17, 0.84)';
   roundRect(ctx, x, y - boxH / 2, boxW, boxH, 8);
   ctx.fill();
   ctx.strokeStyle = 'rgba(255, 255, 255, 0.14)';
   ctx.stroke();
-  ctx.fillStyle = '#f0f3f6';
+  ctx.fillStyle = '#f5f3e9';
   ctx.fillText(label, x + padX, y + 1);
   ctx.restore();
 }
@@ -955,23 +1029,12 @@ async function readExifDate(file: File) {
     const data = await exifr.parse(file, ['DateTimeOriginal', 'CreateDate', 'ModifyDate']);
     const value = data?.DateTimeOriginal ?? data?.CreateDate ?? data?.ModifyDate;
     if (value instanceof Date && !Number.isNaN(value.getTime()) && value.getFullYear() >= 1900) {
-      return value.toISOString().slice(0, 10);
+      return formatLocalDate(value);
     }
   } catch {
-    return readDateFromFilename(file.name);
+    return parseDateFromFilename(file.name);
   }
-  return readDateFromFilename(file.name);
-}
-
-function readDateFromFilename(name: string) {
-  const match = name.match(/(?:19|20)\d{6}/);
-  if (!match) return '';
-  const raw = match[0];
-  const year = raw.slice(0, 4);
-  const month = raw.slice(4, 6);
-  const day = raw.slice(6, 8);
-  const date = new Date(`${year}-${month}-${day}T00:00:00`);
-  return Number.isNaN(date.getTime()) ? '' : `${year}-${month}-${day}`;
+  return parseDateFromFilename(file.name);
 }
 
 function toDateInputValue(value: string) {
@@ -1020,6 +1083,39 @@ function loadImage(src: string) {
     image.onerror = reject;
     image.src = src;
   });
+}
+
+function createImageCache() {
+  const cache = new Map<string, Promise<HTMLImageElement>>();
+  return {
+    load(src: string) {
+      let image = cache.get(src);
+      if (!image) {
+        image = loadImage(src);
+        cache.set(src, image);
+      }
+      return image;
+    },
+    clear() {
+      cache.clear();
+    }
+  };
+}
+
+function waitForFrame() {
+  return new Promise<void>((resolve) => window.setTimeout(resolve, 1000 / 24));
+}
+
+function throwIfAborted(signal: AbortSignal) {
+  if (signal.aborted) throw new DOMException('Export cancelled', 'AbortError');
+}
+
+function isAbortError(error: unknown) {
+  return error instanceof DOMException && error.name === 'AbortError';
+}
+
+function yieldToBrowser() {
+  return new Promise<void>((resolve) => window.setTimeout(resolve, 0));
 }
 
 export default App;

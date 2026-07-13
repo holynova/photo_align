@@ -7,7 +7,8 @@
     "dev": "vite --host 0.0.0.0",
     "build": "tsc -b && vite build",
     "preview": "vite preview --host 0.0.0.0",
-    "build:pages": "GITHUB_PAGES=true tsc -b && GITHUB_PAGES=true vite build"
+    "build:pages": "GITHUB_PAGES=true tsc -b && GITHUB_PAGES=true vite build",
+    "test": "vitest run"
   },
   "dependencies": {
     "@mediapipe/tasks-vision": "^0.10.22-rc.20250304",
@@ -29,6 +30,7 @@
     "globals": "^16.0.0",
     "typescript": "~5.8.3",
     "typescript-eslint": "^8.30.1",
-    "vite": "^6.3.5"
+    "vite": "^6.3.5",
+    "vitest": "^3.2.7"
   }
 }
