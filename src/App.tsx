@@ -22,7 +22,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 type PhotoStatus = 'queued' | 'ready' | 'needs-review' | 'failed';
-type Score = '效果很好' | '可以使用' | '可能跳动' | '建议替换' | '无法识别';
+type Score = 'Looks great' | 'Usable' | 'May jitter' | 'Replace this one' | 'No face found';
 type Aspect = '1:1' | '4:5' | '9:16' | '16:9';
 type CropMode = 'face' | 'shoulders' | 'original';
 type AlignMode = 'natural' | 'strict';
@@ -98,7 +98,7 @@ function App() {
   const [photos, setPhotos] = useState<PhotoItem[]>([]);
   const [settings, setSettings] = useState<RenderSettings>(defaultSettings);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [analysisText, setAnalysisText] = useState('等待上传');
+  const [analysisText, setAnalysisText] = useState('Waiting for photos');
   const [activeId, setActiveId] = useState<string | null>(null);
   const [exportState, setExportState] = useState({ running: false, text: '', progress: 0, url: '', extension: 'mp4' });
   const landmarkerRef = useRef<FaceLandmarker | null>(null);
@@ -121,7 +121,7 @@ function App() {
 
   const ensureLandmarker = useCallback(async () => {
     if (landmarkerRef.current) return landmarkerRef.current;
-    setAnalysisText('加载本地人脸识别模型');
+    setAnalysisText('Loading the local face detection model');
     const baseUrl = new URL(import.meta.env.BASE_URL, window.location.origin);
     const wasmUrl = new URL('mediapipe/wasm', baseUrl).toString().replace(/\/$/, '');
     const modelUrl = new URL('mediapipe/models/face_landmarker.task', baseUrl).toString();
@@ -162,7 +162,7 @@ function App() {
 
       setExportState({ running: false, text: '', progress: 0, url: '', extension: 'mp4' });
       setIsAnalyzing(true);
-      setAnalysisText('准备读取照片');
+      setAnalysisText('Reading photos');
 
       const initialItems = await Promise.all(imageFiles.map((file) => createPhotoItem(file, dateOverrides.get(file.name))));
       setPhotos((current) => {
@@ -177,7 +177,7 @@ function App() {
 
         for (let index = 0; index < initialItems.length; index += 1) {
           const item = initialItems[index];
-          setAnalysisText(`分析 ${index + 1} / ${initialItems.length}: ${item.name}`);
+          setAnalysisText(`Analyzing ${index + 1} / ${initialItems.length}: ${item.name}`);
           const result = await analyzePhoto(item, landmarker);
           analyzed.push(result);
           setPhotos([...analyzed, ...initialItems.slice(index + 1)]);
@@ -185,10 +185,10 @@ function App() {
         }
 
         setActiveId(analyzed.find((item) => item.faces[item.selectedFace] && !item.skipped)?.id ?? analyzed[0]?.id ?? null);
-        setAnalysisText('分析完成');
+        setAnalysisText('Analysis complete');
       } catch (error) {
         console.error(error);
-        setAnalysisText('模型加载或照片分析失败，请刷新后重试');
+        setAnalysisText('The model failed to load or the photos could not be analyzed. Refresh and try again.');
       } finally {
         setIsAnalyzing(false);
       }
@@ -197,7 +197,7 @@ function App() {
   );
 
   const loadDemo = useCallback(async () => {
-    setAnalysisText('准备 Demo 照片');
+    setAnalysisText('Loading demo photos');
     try {
       const demoBaseUrl = new URL('demo/', new URL(import.meta.env.BASE_URL, window.location.origin));
       const response = await fetch(new URL('manifest.json', demoBaseUrl));
@@ -218,7 +218,7 @@ function App() {
       await handleFiles(files, dateOverrides);
     } catch (error) {
       console.error(error);
-      setAnalysisText('Demo 加载失败，请检查 demo/manifest.json');
+      setAnalysisText('Demo failed to load. Check demo/manifest.json');
     }
   }, [handleFiles]);
 
@@ -263,7 +263,7 @@ function App() {
     setPhotos([]);
     setActiveId(null);
     setExportState({ running: false, text: '', progress: 0, url: '', extension: 'mp4' });
-    setAnalysisText('等待上传');
+    setAnalysisText('Waiting for photos');
   };
 
   const exportVideo = async () => {
@@ -272,7 +272,7 @@ function App() {
     exportUrlRef.current = '';
     const controller = new AbortController();
     exportAbortRef.current = controller;
-    setExportState({ running: true, text: '准备渲染帧', progress: 0, url: '', extension: settings.format });
+    setExportState({ running: true, text: 'Preparing frames', progress: 0, url: '', extension: settings.format });
 
     try {
       const output =
@@ -284,10 +284,10 @@ function App() {
               setExportState((state) => ({ ...state, text, progress }));
             });
       exportUrlRef.current = output.url;
-      setExportState({ running: false, text: '导出完成', progress: 1, url: output.url, extension: output.extension });
+      setExportState({ running: false, text: 'Export complete', progress: 1, url: output.url, extension: output.extension });
     } catch (error) {
       console.error(error);
-      const text = isAbortError(error) ? '已取消导出' : '导出失败，可能是浏览器内存不足或编码器不可用';
+      const text = isAbortError(error) ? 'Export cancelled' : 'Export failed. The browser may be out of memory, or the encoder is unavailable.';
       setExportState({ running: false, text, progress: 0, url: '', extension: settings.format });
     } finally {
       exportAbortRef.current = null;
@@ -300,12 +300,12 @@ function App() {
     <main className="app-shell">
       <section className="topbar">
         <div>
-          <p className="eyebrow">本地隐私工具</p>
-          <h1>人像时间线</h1>
+          <p className="eyebrow">Private, on-device tool</p>
+          <h1>Portrait Timeline</h1>
         </div>
         <div className="privacy-pill">
           <ShieldCheck size={18} />
-          照片只在本机处理
+          Photos stay on your device
         </div>
         <a className="repo-link" href={REPO_URL} target="_blank" rel="noreferrer">
           <Github size={18} />
@@ -320,10 +320,10 @@ function App() {
           <div className="preview-column">
             <div className="preview-head">
               <div>
-                <p className="eyebrow">预览</p>
-                <h2>{activePhoto?.name ?? '对齐结果'}</h2>
+                <p className="eyebrow">Preview</p>
+                <h2>{activePhoto?.name ?? 'Aligned result'}</h2>
               </div>
-              <button className="icon-button" onClick={resetAll} title="重新上传">
+              <button className="icon-button" onClick={resetAll} title="Start over">
                 <RotateCcw size={18} />
               </button>
             </div>
@@ -340,9 +340,9 @@ function App() {
             <section className="panel-section">
               <div className="section-title">
                 <SlidersHorizontal size={18} />
-                <h3>生成设置</h3>
+                <h3>Render settings</h3>
               </div>
-              <ControlGroup label="画幅">
+              <ControlGroup label="Aspect ratio">
                 {(['1:1', '4:5', '9:16', '16:9'] as Aspect[]).map((aspect) => (
                   <button
                     key={aspect}
@@ -354,7 +354,7 @@ function App() {
                 ))}
               </ControlGroup>
               <label className="field">
-                <span>速度</span>
+                <span>Speed</span>
                 <input
                   type="range"
                   min="0.5"
@@ -365,11 +365,11 @@ function App() {
                 />
                 <strong>{settings.speed.toFixed(1)}x</strong>
               </label>
-              <ControlGroup label="过渡">
+              <ControlGroup label="Transition">
                 {[
-                  ['none', '无'],
-                  ['fade', '轻微'],
-                  ['slow', '融合']
+                  ['none', 'None'],
+                  ['fade', 'Subtle'],
+                  ['slow', 'Blend']
                 ].map(([transition, label]) => (
                   <button
                     key={transition}
@@ -380,11 +380,11 @@ function App() {
                   </button>
                 ))}
               </ControlGroup>
-              <ControlGroup label="保留">
+              <ControlGroup label="Framing">
                 {[
-                  ['face', '脸部'],
-                  ['shoulders', '头肩'],
-                  ['original', '构图']
+                  ['face', 'Face'],
+                  ['shoulders', 'Shoulders'],
+                  ['original', 'Full frame']
                 ].map(([cropMode, label]) => (
                   <button
                     key={cropMode}
@@ -395,10 +395,10 @@ function App() {
                   </button>
                 ))}
               </ControlGroup>
-              <ControlGroup label="对齐">
+              <ControlGroup label="Alignment">
                 {[
-                  ['natural', '自然'],
-                  ['strict', '严格']
+                  ['natural', 'Natural'],
+                  ['strict', 'Strict']
                 ].map(([alignMode, label]) => (
                   <button
                     key={alignMode}
@@ -415,16 +415,16 @@ function App() {
                   checked={settings.showDate}
                   onChange={(event) => setSettings({ ...settings, showDate: event.target.checked })}
                 />
-                <span>显示日期</span>
+                <span>Show date</span>
               </label>
             </section>
 
             <section className="panel-section">
               <div className="section-title">
                 <Film size={18} />
-                <h3>导出</h3>
+                <h3>Export</h3>
               </div>
-              <ControlGroup label="格式">
+              <ControlGroup label="Format">
                 {(['mp4', 'webm', 'gif'] as ExportFormat[]).map((format) => (
                   <button
                     key={format}
@@ -437,15 +437,15 @@ function App() {
                 ))}
               </ControlGroup>
               <p className="export-summary">
-                {usablePhotos.length} 张照片，预计 {getExportDurationSeconds(usablePhotos.length, settings.speed, settings.transition).toFixed(1)} 秒
+                {usablePhotos.length} photos · about {getExportDurationSeconds(usablePhotos.length, settings.speed, settings.transition).toFixed(1)}s
               </p>
               <button className="primary-button" disabled={exportState.running || !usablePhotos.length} onClick={exportVideo}>
                 {exportState.running ? <Loader2 className="spin" size={18} /> : <Download size={18} />}
-                生成文件
+                Generate file
               </button>
               {exportState.running && (
                 <button className="secondary-button" type="button" onClick={cancelExport}>
-                  取消导出
+                  Cancel export
                 </button>
               )}
               {exportState.text && (
@@ -458,13 +458,13 @@ function App() {
                     <>
                       <div className="result-preview">
                         {exportState.extension === 'gif' ? (
-                          <img src={exportState.url} alt="导出结果预览" />
+                          <img src={exportState.url} alt="Exported result preview" />
                         ) : (
                           <video src={exportState.url} controls playsInline />
                         )}
                       </div>
                       <a href={exportState.url} download={`face-timeline.${exportState.extension}`} className="download-link">
-                        下载结果
+                        Download result
                       </a>
                     </>
                   )}
@@ -475,15 +475,15 @@ function App() {
             <section className="panel-section stats">
               <p>
                 <FileImage size={16} />
-                {photos.length} 张照片
+                {photos.length} photos
               </p>
               <p>
                 <Eye size={16} />
-                {usablePhotos.length} 张可用
+                {usablePhotos.length} usable
               </p>
               <p className={reviewCount ? 'warn' : ''}>
                 <AlertTriangle size={16} />
-                {reviewCount} 张待确认
+                {reviewCount} need review
               </p>
             </section>
           </aside>
@@ -518,28 +518,28 @@ function UploadPanel({
       <div className="upload-icon">
         <Upload size={34} />
       </div>
-      <h2>上传一组人物照片</h2>
-      <p>最多 100 张，支持 JPG / PNG。原型会在浏览器本地识别人脸、读取日期并生成对齐视频。</p>
+      <h2>Upload a set of portrait photos</h2>
+      <p>Up to 100 photos in JPG or PNG. Everything runs locally in your browser: faces are detected, dates are read, and an aligned video is generated.</p>
       <div className="upload-actions">
         <button className="primary-button" type="button" onClick={onLoadDemo} disabled={isAnalyzing}>
           {isAnalyzing ? <Loader2 className="spin" size={18} /> : <Eye size={18} />}
-          查看 Demo
+          View demo
         </button>
         <label className="secondary-button file-button">
           <Upload size={18} />
-          选择照片
+          Choose photos
           <input type="file" accept="image/*" multiple onChange={(event) => event.target.files && onFiles(event.target.files)} />
         </label>
       </div>
       <div className="upload-notes">
         <span>
-          <ShieldCheck size={16} /> 不上传服务器
+          <ShieldCheck size={16} /> Nothing is uploaded
         </span>
         <span>
-          <Users size={16} /> 多人照片可选择主角
+          <Users size={16} /> Pick the subject in group photos
         </span>
         <span>
-          <Calendar size={16} /> 自动读取拍摄时间
+          <Calendar size={16} /> Reads capture dates automatically
         </span>
       </div>
     </section>
@@ -586,13 +586,13 @@ function PhotoTimeline({
                   event.stopPropagation();
                   onUpdate(photo.id, (item) => ({ ...item, selectedFace: face.id, status: item.dateText ? 'ready' : 'needs-review' }));
                 }}
-                title="选择这个人"
+                title="Use this person"
               />
             ))}
           </div>
           <div className="thumb-body">
             <strong>{photo.score}</strong>
-            <span>{photo.warning || photo.dateText || '缺少日期'}</span>
+            <span>{photo.warning || photo.dateText || 'No date'}</span>
             <input
               type="date"
               value={photo.manualDate}
@@ -620,7 +620,7 @@ function PhotoTimeline({
                 checked={photo.skipped}
                 onChange={(event) => onUpdate(photo.id, (item) => ({ ...item, skipped: event.target.checked }))}
               />
-              跳过
+              Skip
             </label>
           </div>
         </article>
@@ -641,8 +641,8 @@ async function createPhotoItem(file: File, dateOverride = ''): Promise<PhotoItem
     dateText,
     manualDate: toDateInputValue(dateText),
     status: 'queued',
-    score: '可以使用',
-    warning: dateText ? '' : '缺少拍摄时间',
+    score: 'Usable',
+    warning: dateText ? '' : 'No capture date',
     width: image.naturalWidth,
     height: image.naturalHeight,
     faces: [],
@@ -669,8 +669,8 @@ async function analyzePhoto(item: PhotoItem, landmarker: FaceLandmarker): Promis
     return {
       ...item,
       status: 'failed',
-      score: '无法识别',
-      warning: '没有检测到人脸'
+      score: 'No face found',
+      warning: 'No face was detected'
     };
   }
 
@@ -681,21 +681,21 @@ async function analyzePhoto(item: PhotoItem, landmarker: FaceLandmarker): Promis
   const eyeAngle = Math.atan2(chosen.rightEye.y - chosen.leftEye.y, chosen.rightEye.x - chosen.leftEye.x);
   const sideAngle = Math.abs(normalizeAngle(eyeAngle));
 
-  let score: Score = '效果很好';
+  let score: Score = 'Looks great';
   let warning = item.warning;
-  if (faces.length > 1) warning = '检测到多个人，请选择主角';
-  if (!hasDate) warning = warning || '缺少拍摄时间';
+  if (faces.length > 1) warning = 'Multiple people detected — pick the subject';
+  if (!hasDate) warning = warning || 'No capture date';
   if (chosen.confidence < 0.28 || faceSize < 0.1 || eyeDistance < 0.025) {
-    score = '建议替换';
-    warning = '眼睛关键点不稳定，建议换更清晰的正脸照片';
+    score = 'Replace this one';
+    warning = 'Eye landmarks are unstable — try a sharper, front-facing photo';
   } else if (faceSize < 0.18 || eyeDistance < 0.05) {
-    score = '可以使用';
-    warning = warning || '脸部较小，已使用高分辨率检测';
+    score = 'Usable';
+    warning = warning || 'Small face — detected at higher resolution';
   } else if (sideAngle > 0.35) {
-    score = '可能跳动';
-    warning = warning || '脸部角度较大';
+    score = 'May jitter';
+    warning = warning || 'Face is turned at a wide angle';
   } else if (faces.length > 1 || !hasDate) {
-    score = '可以使用';
+    score = 'Usable';
   }
 
   return {
@@ -883,7 +883,7 @@ async function encodeGifStream(
     const palette = quantize(frame.data, 128, { format: 'rgb444' });
     const bitmap = applyPalette(frame.data, palette, 'rgb444');
     gif.writeFrame(bitmap, frame.width, frame.height, { palette, delay: frameDurationMs, repeat: 0 });
-    onProgress(progress, `编码 GIF ${frameNumber} / ${totalFrames}`);
+    onProgress(progress, `Encoding GIF ${frameNumber} / ${totalFrames}`);
     if (frameNumber % 3 === 0) await yieldToBrowser();
   });
 
@@ -926,7 +926,7 @@ async function encodeVideoStream(
   try {
     recorder.start();
     await renderExportFrames(canvas, photos, settings, signal, async (progress, frameNumber, totalFrames) => {
-      onProgress(progress, `编码视频 ${frameNumber} / ${totalFrames}`);
+      onProgress(progress, `Encoding video ${frameNumber} / ${totalFrames}`);
       await waitForFrame();
     });
     stopRecorder();

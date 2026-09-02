@@ -1,372 +1,371 @@
-# 人物照片对齐视频工具技术实现方案对比
+# Technical options for the portrait photo alignment video tool
 
-## 1. 需求中的关键技术点
+## 1. Key technical points from the requirements
 
-本产品有几个核心技术约束：
+This product has a few core technical constraints:
 
-- 必须是网页工具
-- 照片完全本地处理，不上传服务器
-- 普通用户使用，最多约 100 张照片
-- 需要识别人脸、眼睛、拍摄时间
-- 需要处理多人、缺少时间、识别失败等异常情况
-- 最终导出 MP4 或 GIF
-- 默认效果应自然好看，而不是机械锁死
+- It must be a web tool
+- Photos are processed entirely locally and never uploaded to a server
+- It is used by ordinary people, with up to roughly 100 photos
+- It must detect faces, eyes, and capture times
+- It must handle exceptions such as multiple people, missing times, and failed detection
+- It ultimately exports MP4 or GIF
+- The default result should look natural and pleasant, not mechanically locked down
 
-因此技术架构需要重点解决：
+So the architecture must primarily solve:
 
-1. 本地图片读取和 EXIF 解析
-2. 浏览器端人脸和眼睛关键点检测
-3. 基于关键点的图像几何对齐
-4. 多张照片的排序、裁剪、平滑和预览
-5. 浏览器端视频或 GIF 编码
-6. 大量高分辨率照片下的性能和内存控制
+1. Local image reading and EXIF parsing
+2. In-browser face and eye landmark detection
+3. Geometric image alignment based on those landmarks
+4. Sorting, cropping, smoothing, and previewing many photos
+5. In-browser video or GIF encoding
+6. Performance and memory control with many high-resolution photos
 
-## 2. 通用处理管线
+## 2. The common processing pipeline
 
-无论选择哪种方案，核心处理流程基本一致：
+Whichever option is chosen, the core flow is essentially the same:
 
-1. 用户上传照片
-2. 浏览器读取文件和 EXIF 信息
-3. 生成缩略图和工作尺寸图片
-4. 对每张图片做人脸检测
-5. 提取眼睛关键点和人脸框
-6. 处理异常照片
-7. 根据拍摄时间或用户顺序排序
-8. 计算每张照片的旋转、缩放、平移和裁剪参数
-9. 在 Canvas 中生成对齐后的帧
-10. 生成预览
-11. 导出 MP4 或 GIF
+1. The user uploads photos
+2. The browser reads the files and their EXIF data
+3. Thumbnails and working-size images are generated
+4. Face detection runs on each image
+5. Eye landmarks and the face box are extracted
+6. Problem photos are handled
+7. Photos are sorted by capture time or by the user's order
+8. Rotation, scale, translation, and crop parameters are computed per photo
+9. Aligned frames are generated on a Canvas
+10. A preview is generated
+11. MP4 or GIF is exported
 
-## 3. 方案一：纯前端 MVP，MediaPipe + Canvas + ffmpeg.wasm
+## 3. Option 1: pure front-end MVP — MediaPipe + Canvas + ffmpeg.wasm
 
-### 3.1 技术组成
+### 3.1 Stack
 
-- 前端框架：React 或 Vue
-- EXIF：exifr 或 piexifjs
-- 人脸关键点：MediaPipe Face Landmarker
-- 图像处理：Canvas / OffscreenCanvas
-- 视频导出：ffmpeg.wasm
-- GIF 导出：gif.js 或通过 ffmpeg.wasm 生成
-- 状态管理：轻量状态管理即可，例如 Zustand、Pinia 或框架自带状态
+- Front-end framework: React or Vue
+- EXIF: exifr or piexifjs
+- Face landmarks: MediaPipe Face Landmarker
+- Image processing: Canvas / OffscreenCanvas
+- Video export: ffmpeg.wasm
+- GIF export: gif.js, or generated through ffmpeg.wasm
+- State management: something lightweight is enough — Zustand, Pinia, or the framework's built-in state
 
-### 3.2 工作方式
+### 3.2 How it works
 
-浏览器加载人脸检测模型，对每张照片检测人脸和眼睛点。对齐后的图片帧先用 Canvas 生成，再交给 ffmpeg.wasm 在浏览器中编码成 MP4 或 GIF。
+The browser loads the face detection model and detects faces and eye points in each photo. Aligned frames are generated on a Canvas and then handed to ffmpeg.wasm, which encodes MP4 or GIF in the browser.
 
-### 3.3 优点
+### 3.3 Pros
 
-- 完全符合“本地处理”的产品定位
-- 工程路径清晰，适合快速做 MVP
-- ffmpeg.wasm 能力完整，导出格式灵活
-- 不依赖服务端，部署简单
-- 用户信任感强，隐私卖点明确
+- Fully consistent with the "processed locally" positioning
+- A clear engineering path, well suited to building an MVP quickly
+- ffmpeg.wasm is fully capable, so export formats are flexible
+- No server dependency, so deployment is simple
+- Strong user trust, with a clear privacy selling point
 
-### 3.4 缺点
+### 3.4 Cons
 
-- ffmpeg.wasm 包体较大，首次加载慢
-- 视频编码耗 CPU，低端设备可能很慢
-- 处理 100 张高分辨率照片时内存压力明显
-- 移动端体验可能不稳定
-- MP4 编码速度和浏览器兼容性需要仔细测试
+- The ffmpeg.wasm bundle is large, so first load is slow
+- Video encoding is CPU-heavy and may be very slow on low-end devices
+- Memory pressure is noticeable with 100 high-resolution photos
+- The mobile experience may be unstable
+- MP4 encoding speed and browser compatibility need careful testing
 
-### 3.5 适合阶段
+### 3.5 When it fits
 
-最适合第一版 MVP。它的优势是路径直接、可验证产品价值，缺点主要是性能和加载体积。
+Best suited to the first MVP. Its strength is a direct path that can validate the product's value; its weaknesses are mainly performance and bundle size.
 
-## 4. 方案二：纯前端高性能版，MediaPipe + WebCodecs + MP4 Muxer
+## 4. Option 2: high-performance pure front-end — MediaPipe + WebCodecs + MP4 muxer
 
-### 4.1 技术组成
+### 4.1 Stack
 
-- 前端框架：React 或 Vue
-- EXIF：exifr
-- 人脸关键点：MediaPipe Face Landmarker
-- 图像处理：Canvas / OffscreenCanvas / Web Worker
-- 视频编码：WebCodecs
-- MP4 封装：mp4-muxer、Mediabunny 或类似 muxer
-- GIF 导出：单独使用 GIF 编码库，或作为非核心功能延后
+- Front-end framework: React or Vue
+- EXIF: exifr
+- Face landmarks: MediaPipe Face Landmarker
+- Image processing: Canvas / OffscreenCanvas / Web Worker
+- Video encoding: WebCodecs
+- MP4 muxing: mp4-muxer, Mediabunny, or a similar muxer
+- GIF export: a separate GIF encoding library, or deferred as a non-core feature
 
-### 4.2 工作方式
+### 4.2 How it works
 
-Canvas 生成每一帧后，将帧交给 WebCodecs 的 VideoEncoder 编码，再用 MP4 muxer 封装为 MP4 文件。整个过程仍在浏览器本地完成。
+After the Canvas produces each frame, the frame is handed to the WebCodecs VideoEncoder, and an MP4 muxer packages the output into an MP4 file. The whole process still happens locally in the browser.
 
-### 4.3 优点
+### 4.3 Pros
 
-- 性能潜力比 ffmpeg.wasm 更好
-- 可利用浏览器原生视频编码能力
-- 更适合较长视频和较多照片
-- 包体可以比 ffmpeg.wasm 小很多
-- 更容易做流式处理，减少内存峰值
+- Better performance potential than ffmpeg.wasm
+- Can use the browser's native video encoding
+- Better suited to longer videos and larger photo counts
+- The bundle can be much smaller than ffmpeg.wasm
+- Easier to process as a stream, which lowers peak memory
 
-### 4.4 缺点
+### 4.4 Cons
 
-- 浏览器兼容性比 ffmpeg.wasm 更复杂
-- MP4 封装需要额外处理
-- 编码参数、codec 支持、移动端表现需要大量测试
-- GIF 导出不如 ffmpeg.wasm 顺手
-- 工程复杂度高于方案一
+- Browser compatibility is more complicated than with ffmpeg.wasm
+- MP4 muxing needs extra handling
+- Encoding parameters, codec support, and mobile behavior all need a lot of testing
+- GIF export is less convenient than with ffmpeg.wasm
+- Higher engineering complexity than option 1
 
-### 4.5 适合阶段
+### 4.5 When it fits
 
-适合 MVP 验证之后做性能优化，或在一开始就非常重视移动端和导出速度时采用。对第一版来说，技术风险略高。
+Suited to performance work after the MVP is validated, or adopted from the start if mobile and export speed matter a great deal. For a first version the technical risk is somewhat high.
 
-## 5. 方案三：纯前端轻量版，MediaPipe + Canvas + GIF 优先
+## 5. Option 3: lightweight pure front-end — MediaPipe + Canvas + GIF first
 
-### 5.1 技术组成
+### 5.1 Stack
 
-- 前端框架：React 或 Vue
-- EXIF：exifr
-- 人脸关键点：MediaPipe Face Landmarker
-- 图像处理：Canvas
-- GIF 导出：gif.js 或 omggif
-- MP4：暂不支持，或后续加入
+- Front-end framework: React or Vue
+- EXIF: exifr
+- Face landmarks: MediaPipe Face Landmarker
+- Image processing: Canvas
+- GIF export: gif.js or omggif
+- MP4: unsupported for now, or added later
 
-### 5.2 工作方式
+### 5.2 How it works
 
-系统只生成对齐后的图片帧，并把这些帧编码成 GIF。预览和导出都围绕 GIF 展开。
+The system only produces aligned image frames and encodes them into a GIF. Both preview and export revolve around GIF.
 
-### 5.3 优点
+### 5.3 Pros
 
-- 实现最简单
-- 技术风险较低
-- 不需要处理 MP4 codec 和 muxer
-- 适合快速做原型，验证对齐效果
-- 便于调试每一帧的画面
+- The simplest to implement
+- Relatively low technical risk
+- No need to deal with MP4 codecs and muxers
+- Good for quickly building a prototype to validate alignment quality
+- Makes debugging individual frames easy
 
-### 5.4 缺点
+### 5.4 Cons
 
-- GIF 文件大
-- GIF 颜色质量差
-- 对普通用户分享不如 MP4 友好
-- 帧数和分辨率稍高时文件会膨胀
-- 不符合最终产品“自然好看”的最佳输出目标
+- GIF files are large
+- GIF color quality is poor
+- Less friendly for ordinary users to share than MP4
+- File size balloons as frame count and resolution rise
+- Does not match the final product's goal of a natural, good-looking output
 
-### 5.5 适合阶段
+### 5.5 When it fits
 
-适合非常早期的算法和交互原型，不建议作为正式第一版的唯一导出方案。
+Suited to a very early algorithm and interaction prototype. Not recommended as the only export path in a real first version.
 
-## 6. 方案四：本地网页 + 本地服务端
+## 6. Option 4: local web page + local server
 
-### 6.1 技术组成
+### 6.1 Stack
 
-- 前端：React 或 Vue
-- 本地服务：Node.js、Python 或 Rust
-- 人脸检测：MediaPipe、OpenCV、dlib、InsightFace 等
-- 图像处理：OpenCV / Sharp / Pillow
-- 视频导出：原生 FFmpeg
+- Front end: React or Vue
+- Local service: Node.js, Python, or Rust
+- Face detection: MediaPipe, OpenCV, dlib, InsightFace, etc.
+- Image processing: OpenCV / Sharp / Pillow
+- Video export: native FFmpeg
 
-### 6.2 工作方式
+### 6.2 How it works
 
-用户启动一个本地应用或本地服务，网页只负责交互，图片分析和视频生成交给本地服务处理。照片仍不上传云端。
+The user starts a local app or local service; the web page only handles interaction, while image analysis and video generation are delegated to the local service. Photos still never go to the cloud.
 
-### 6.3 优点
+### 6.3 Pros
 
-- 性能明显更强
-- 原生 FFmpeg 稳定、成熟、格式支持好
-- 更容易处理大量高分辨率照片
-- 人脸检测和图像处理库选择更丰富
-- 可以支持更复杂的算法和更高质量导出
+- Markedly better performance
+- Native FFmpeg is stable, mature, and supports many formats
+- Easier to handle large numbers of high-resolution photos
+- A far wider choice of face detection and image processing libraries
+- Can support more complex algorithms and higher-quality export
 
-### 6.4 缺点
+### 6.4 Cons
 
-- 不再是“打开网页即可用”
-- 安装门槛高
-- 对普通用户不够轻
-- 跨平台打包和更新成本高
-- 免费小工具的分发复杂度增加
+- No longer "open a web page and use it"
+- A high installation barrier
+- Not lightweight enough for ordinary users
+- Cross-platform packaging and updates are costly
+- Distribution gets more complicated for a free small tool
 
-### 6.5 适合阶段
+### 6.5 When it fits
 
-适合未来做桌面版或高级版，不适合作为当前“免费网页小工具”的第一选择。
+Suited to a future desktop or pro version. Not a good first choice for the current "free web tool" framing.
 
-## 7. 方案五：云端处理版
+## 7. Option 5: cloud processing
 
-### 7.1 技术组成
+### 7.1 Stack
 
-- 前端：React 或 Vue
-- 后端：Node.js / Python
-- 存储：对象存储
-- 人脸检测：服务端 AI 模型
-- 视频生成：服务端 FFmpeg
+- Front end: React or Vue
+- Back end: Node.js / Python
+- Storage: object storage
+- Face detection: a server-side AI model
+- Video generation: server-side FFmpeg
 
-### 7.2 优点
+### 7.2 Pros
 
-- 用户设备压力小
-- 性能可控
-- 手机端体验更稳定
-- 更容易统一导出质量
-- 后续可以做账号、项目保存、批量处理
+- Little pressure on the user's device
+- Controllable performance
+- A more stable experience on phones
+- Easier to make export quality consistent
+- Opens the door to accounts, saved projects, and batch processing later
 
-### 7.3 缺点
+### 7.3 Cons
 
-- 违背当前“完全本地处理”的核心定位
-- 人脸照片隐私风险高
-- 需要服务器成本
-- 需要处理上传、删除、合规、数据安全
-- 免费小工具运营压力更大
+- Contradicts the current "fully local processing" core positioning
+- High privacy risk for photos of people's faces
+- Requires server costs
+- Requires handling upload, deletion, compliance, and data security
+- Greater operational burden for a free small tool
 
-### 7.4 适合阶段
+### 7.4 When it fits
 
-不建议当前采用。除非未来产品方向改变，否则应避免。
+Not recommended right now. Avoid it unless the product direction changes in the future.
 
-## 8. 关键模块选型建议
+## 8. Recommendations for key modules
 
-### 8.1 人脸关键点
+### 8.1 Face landmarks
 
-优先建议：
+Preferred:
 
 - MediaPipe Face Landmarker
 
-原因：
+Why:
 
-- 支持 Web / JavaScript
-- 能检测多个人脸
-- 提供密集人脸关键点，眼睛点位足够用于对齐
-- 比传统 68 点 landmark 更适合后续扩展
+- Supports the web and JavaScript
+- Can detect multiple faces
+- Provides dense face landmarks, and the eye points are precise enough for alignment
+- Better suited to future extension than a traditional 68-point landmark set
 
-备选：
+Alternatives:
 
 - face-api.js
-- TensorFlow.js 相关模型
+- TensorFlow.js models
 
-备选适用情况：
+When an alternative fits:
 
-- 希望模型更轻
-- 只需要基础人脸框和少量关键点
-- 可以接受精度和维护风险
+- You want a lighter model
+- You only need a basic face box and a few landmarks
+- You can accept the accuracy and maintenance risk
 
-### 8.2 EXIF 读取
+### 8.2 EXIF reading
 
-建议：
+Recommended:
 
 - exifr
 
-原因：
+Why:
 
-- 前端使用方便
-- 可读取拍摄时间、方向、相机信息等
-- 适合批量图片解析
+- Convenient on the front end
+- Reads capture time, orientation, camera info, and more
+- Well suited to parsing images in bulk
 
-需要注意：
+Things to watch:
 
-- 用户从社交软件保存的图片常常没有 EXIF
-- iOS / Android 相册导出方式可能影响 EXIF 保留
-- 必须设计“缺少时间”的用户补充流程
+- Images the user saved from social apps frequently have no EXIF
+- How photos are exported from the iOS / Android camera roll can affect whether EXIF survives
+- A "missing time" flow for the user to fill in must be designed
 
-### 8.3 图像处理
+### 8.3 Image processing
 
-建议：
+Recommended:
 
-- Canvas 作为第一版基础
-- 有性能压力时引入 OffscreenCanvas + Web Worker
+- Canvas as the basis for the first version
+- Bring in OffscreenCanvas + Web Worker when performance becomes a problem
 
-处理内容：
+What it handles:
 
-- 修正 EXIF 方向
-- 缩放到工作尺寸
-- 根据眼睛点计算仿射变换
-- 统一裁剪到目标画幅
-- 生成预览帧和导出帧
+- Correcting EXIF orientation
+- Scaling to the working size
+- Computing the affine transform from the eye points
+- Cropping uniformly to the target aspect ratio
+- Generating preview frames and export frames
 
-### 8.4 视频导出
+### 8.4 Video export
 
-第一版建议：
+For the first version:
 
 - ffmpeg.wasm
 
-中长期优化：
+For the medium to long term:
 
-- WebCodecs + MP4 muxer
+- WebCodecs + an MP4 muxer
 
-原因：
+Why:
 
-- ffmpeg.wasm 实现直观，能力完整，但性能和包体是问题
-- WebCodecs 性能潜力更好，但工程复杂度和兼容性更高
+- ffmpeg.wasm is straightforward to implement and fully capable, but performance and bundle size are problems
+- WebCodecs has better performance potential, but higher engineering complexity and compatibility cost
 
-## 9. 对齐算法建议
+## 9. Alignment algorithm recommendations
 
-### 9.1 严格眼睛对齐
+### 9.1 Strict eye alignment
 
-输入：
+Inputs:
 
-- 左眼中心点 L
-- 右眼中心点 R
-- 目标左眼点 L'
-- 目标右眼点 R'
+- Left eye center L
+- Right eye center R
+- Target left eye point L'
+- Target right eye point R'
 
-计算：
+Computed:
 
-- 眼睛连线角度
-- 两眼距离
-- 旋转角度
-- 缩放比例
-- 平移量
+- The angle of the line between the eyes
+- The distance between the eyes
+- The rotation angle
+- The scale factor
+- The translation
 
-特点：
+Characteristics:
 
-- 几何上最清晰
-- 脸部稳定强
-- 但可能显得机械
+- Geometrically the clearest
+- Very strong face stability
+- But it can look mechanical
 
-### 9.2 自然稳定对齐
+### 9.2 Natural stabilized alignment
 
-在严格眼睛对齐基础上加入缓和：
+Builds on strict eye alignment with some easing:
 
-- 不完全锁死眼睛点
-- 同时考虑人脸框中心
-- 限制相邻照片之间的缩放变化
-- 对旋转角度做阈值限制
-- 对裁剪窗口做平滑
-- 保留头发和肩膀区域
+- The eye points are not locked down completely
+- The face box center is taken into account as well
+- Scale change between adjacent photos is limited
+- The rotation angle is capped by a threshold
+- The crop window is smoothed
+- The hair and shoulder regions are preserved
 
-特点：
+Characteristics:
 
-- 更符合普通用户审美
-- 画面不容易显得僵硬
-- 算法参数需要反复调试
+- Better matches ordinary users' taste
+- The picture is less likely to look stiff
+- The algorithm's parameters need repeated tuning
 
-第一版建议默认使用自然稳定对齐，严格眼睛对齐放进高级选项。
+The first version should default to natural stabilized alignment and put strict eye alignment in an advanced option.
 
-## 10. 推荐路线
+## 10. Recommended roadmap
 
-### 10.1 第一阶段：可用 MVP
+### 10.1 Stage one: a usable MVP
 
-建议采用：
+Recommended:
 
-- 方案一：MediaPipe + Canvas + ffmpeg.wasm
+- Option 1: MediaPipe + Canvas + ffmpeg.wasm
 
-目标：
+Goals:
 
-- 完成上传、识别、排序、异常处理、预览、MP4/GIF 导出
-- 验证用户是否喜欢这种视频效果
-- 验证自然稳定对齐的参数体验
+- Complete upload, detection, sorting, exception handling, preview, and MP4/GIF export
+- Validate whether users like this kind of video
+- Validate how the natural-stabilization parameters feel
 
-### 10.2 第二阶段：性能优化
+### 10.2 Stage two: performance work
 
-优化方向：
+Directions:
 
-- 图片预处理降采样
+- Downsample images during preprocessing
 - OffscreenCanvas + Web Worker
-- 分批处理，避免一次性解码 100 张原图
-- IndexedDB 临时缓存处理结果
-- WebCodecs 替换或补充 ffmpeg.wasm
+- Process in batches, avoiding decoding all 100 originals at once
+- Cache intermediate results temporarily in IndexedDB
+- Replace or supplement ffmpeg.wasm with WebCodecs
 
-### 10.3 第三阶段：体验增强
+### 10.3 Stage three: experience improvements
 
-增强方向：
+Directions:
 
-- HEIC 支持
-- 更好的手动眼睛修正
-- 移动端适配
-- 项目本地保存和恢复
-- 更多日期样式和背景填充
+- HEIC support
+- Better manual eye correction
+- Mobile adaptation
+- Saving and restoring a project locally
+- More date styles and background fills
 
-## 11. 总体结论
+## 11. Overall conclusion
 
-当前最推荐的路线是：
+The most recommended path right now is:
 
-> 第一版采用纯前端架构，使用 MediaPipe Face Landmarker 做人脸和眼睛关键点检测，Canvas 做对齐和帧生成，ffmpeg.wasm 做 MP4/GIF 导出。
+> Build the first version as a pure front-end app, using MediaPipe Face Landmarker for face and eye landmark detection, Canvas for alignment and frame generation, and ffmpeg.wasm for MP4/GIF export.
 
-这条路线最符合当前产品定位：免费、网页、普通用户、完全本地处理。它不是性能最强的方案，但最容易快速做出完整闭环。
+This path best matches the current positioning: free, on the web, for ordinary users, processed entirely locally. It is not the highest-performance option, but it is the easiest way to get a complete end-to-end product quickly.
 
-如果 MVP 验证成功，再逐步把视频编码迁移到 WebCodecs，并通过 Worker、OffscreenCanvas 和分批处理优化性能。
-
+If the MVP is validated, gradually move video encoding to WebCodecs and optimize performance with Workers, OffscreenCanvas, and batched processing.

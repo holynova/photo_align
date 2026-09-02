@@ -1,401 +1,400 @@
-# 本地 App 技术实现方案对比
+# Technical options for a local app
 
-## 1. 背景
+## 1. Background
 
-如果产品从“网页工具”改为“本地 App”，核心约束会发生变化：
+If the product moves from a "web tool" to a "local app", the core constraints change:
 
-- 仍然可以完全本地处理照片
-- 可以使用原生文件系统、原生 FFmpeg、GPU 和更成熟的图像处理库
-- 性能、稳定性、导出质量通常优于纯网页
-- 但用户需要下载安装，分发、更新、签名和跨平台适配成本更高
+- Photos can still be processed entirely locally
+- The native file system, native FFmpeg, the GPU, and more mature image processing libraries all become available
+- Performance, stability, and export quality are usually better than on the pure web
+- But users must download and install it, and distribution, updates, signing, and cross-platform work all cost more
 
-本地 App 更适合追求稳定导出、高质量视频、批量处理和更强隐私感的版本。
+A local app fits a version that aims for reliable export, high-quality video, batch processing, and a stronger sense of privacy.
 
-## 2. 本地 App 的通用处理架构
+## 2. The common architecture of a local app
 
-无论采用哪种客户端技术，核心模块大致一致：
+Whichever client technology is used, the core modules are broadly the same:
 
-1. UI 层：上传、预览、异常确认、参数设置、导出进度
-2. 文件层：读取本地照片、EXIF、缓存中间结果
-3. 识别层：人脸检测、眼睛关键点、多人检测
-4. 对齐层：计算旋转、缩放、平移、裁剪和平滑参数
-5. 渲染层：批量生成对齐后的帧
-6. 编码层：调用 FFmpeg 或系统编码器生成 MP4/GIF
-7. 项目层：保存本地项目、恢复编辑状态
+1. UI layer: upload, preview, exception confirmation, settings, export progress
+2. File layer: reading local photos and EXIF, caching intermediate results
+3. Detection layer: face detection, eye landmarks, multi-person detection
+4. Alignment layer: computing rotation, scale, translation, crop, and smoothing parameters
+5. Render layer: generating aligned frames in bulk
+6. Encoding layer: calling FFmpeg or a system encoder to produce MP4/GIF
+7. Project layer: saving a local project and restoring the editing state
 
-## 3. 方案一：Electron + Node.js + 原生 FFmpeg + MediaPipe/ONNX
+## 3. Option 1: Electron + Node.js + native FFmpeg + MediaPipe/ONNX
 
-### 3.1 技术组成
+### 3.1 Stack
 
-- UI：React / Vue / Svelte
-- 桌面壳：Electron
-- 文件处理：Node.js
-- EXIF：exiftool、exifr、sharp metadata
-- 图像处理：sharp、opencv4nodejs、Canvas
-- 人脸关键点：MediaPipe、ONNX Runtime、face-api.js、OpenCV 方案
-- 视频导出：原生 FFmpeg
+- UI: React / Vue / Svelte
+- Desktop shell: Electron
+- File handling: Node.js
+- EXIF: exiftool, exifr, sharp metadata
+- Image processing: sharp, opencv4nodejs, Canvas
+- Face landmarks: MediaPipe, ONNX Runtime, face-api.js, or an OpenCV approach
+- Video export: native FFmpeg
 
-### 3.2 工作方式
+### 3.2 How it works
 
-Electron 负责桌面应用和 UI。Node.js 负责本地文件读取、缓存、调用 FFmpeg 和模型推理。前端仍然可以复用网页版的大部分交互逻辑。
+Electron provides the desktop application and the UI. Node.js handles local file reading, caching, invoking FFmpeg, and model inference. The front end can still reuse most of the web version's interaction logic.
 
-### 3.3 优点
+### 3.3 Pros
 
-- 开发效率高
-- 前端技术栈成熟，UI 迭代快
-- 很容易复用网页版代码
-- Node.js 调用本地 FFmpeg、文件系统、Worker 很方便
-- 跨平台能力成熟，Windows/macOS/Linux 都能覆盖
-- 适合快速做一个完整可发布的桌面版
+- High development velocity
+- A mature front-end stack, so the UI iterates quickly
+- Very easy to reuse the web version's code
+- Node.js makes calling native FFmpeg, the file system, and Workers convenient
+- Mature cross-platform support covering Windows, macOS, and Linux
+- Good for quickly producing a complete, releasable desktop version
 
-### 3.4 缺点
+### 3.4 Cons
 
-- 安装包大，内存占用偏高
-- Electron 自带 Chromium，轻量感不如 Tauri 或原生 App
-- 原生依赖、模型文件、FFmpeg 打包需要仔细处理
-- 应用签名、公证、自动更新仍有工程成本
+- Large installer and relatively high memory usage
+- Electron bundles Chromium, so it feels less lightweight than Tauri or a native app
+- Native dependencies, model files, and FFmpeg all need careful packaging
+- App signing, notarization, and auto-update still carry engineering cost
 
-### 3.5 适合情况
+### 3.5 When it fits
 
-- 团队以前端/Node.js 为主
-- 希望最快做出跨平台桌面版
-- 希望最大化复用网页版 UI
-- 可以接受安装包和运行内存较大
+- The team is mainly front-end / Node.js
+- You want a cross-platform desktop version as fast as possible
+- You want to reuse as much of the web UI as possible
+- You can accept a larger installer and memory footprint
 
-## 4. 方案二：Tauri + Web UI + Rust 后端 + 原生 FFmpeg
+## 4. Option 2: Tauri + web UI + Rust backend + native FFmpeg
 
-### 4.1 技术组成
+### 4.1 Stack
 
-- UI：React / Vue / Svelte
-- 桌面壳：Tauri
-- 后端：Rust
-- 图像处理：image、imageproc、OpenCV Rust binding、libvips binding
-- 人脸关键点：MediaPipe 侧车进程、ONNX Runtime、OpenCV
-- 视频导出：原生 FFmpeg
+- UI: React / Vue / Svelte
+- Desktop shell: Tauri
+- Backend: Rust
+- Image processing: image, imageproc, an OpenCV Rust binding, a libvips binding
+- Face landmarks: a MediaPipe sidecar process, ONNX Runtime, OpenCV
+- Video export: native FFmpeg
 
-### 4.2 工作方式
+### 4.2 How it works
 
-UI 使用 Web 技术，核心能力放在 Rust 后端。Rust 负责文件、缓存、任务调度、图像处理和调用 FFmpeg。
+The UI uses web technology while the core capabilities live in the Rust backend. Rust handles files, caching, task scheduling, image processing, and calling FFmpeg.
 
-### 4.3 优点
+### 4.3 Pros
 
-- 安装包通常比 Electron 小
-- 内存占用更低
-- Rust 后端适合做高性能批处理
-- 本地安全边界更好控制
-- UI 仍可复用部分网页版代码
-- 符合“本地、轻量、隐私”的产品气质
+- The installer is usually smaller than Electron's
+- Lower memory usage
+- A Rust backend suits high-performance batch processing
+- The local security boundary is easier to control
+- The UI can still reuse part of the web version's code
+- Matches the "local, lightweight, private" character of the product
 
-### 4.4 缺点
+### 4.4 Cons
 
-- 开发复杂度高于 Electron
-- Rust 生态做人脸关键点不如 Python/JS 直接
-- 接入 MediaPipe、ONNX、OpenCV 时工程门槛较高
-- 系统 WebView 差异可能带来 UI 兼容性问题
-- 团队需要同时掌握前端和 Rust
+- Higher development complexity than Electron
+- The Rust ecosystem is less direct than Python or JS for face landmarks
+- Integrating MediaPipe, ONNX, or OpenCV has a meaningful engineering barrier
+- Differences between system WebViews can cause UI compatibility problems
+- The team needs both front-end and Rust skills
 
-### 4.5 适合情况
+### 4.5 When it fits
 
-- 希望产品显得更轻、更原生
-- 团队有 Rust 能力
-- 愿意为性能和包体投入更多工程成本
-- 长期希望做一个高质量本地工具
+- You want the product to feel lighter and more native
+- The team has Rust capability
+- You are willing to spend more engineering effort on performance and bundle size
+- You want a high-quality local tool for the long term
 
-## 5. 方案三：Python + Qt/PySide + OpenCV/MediaPipe + FFmpeg
+## 5. Option 3: Python + Qt/PySide + OpenCV/MediaPipe + FFmpeg
 
-### 5.1 技术组成
+### 5.1 Stack
 
-- UI：PySide6 / PyQt
-- EXIF：Pillow、exifread、piexif
-- 图像处理：OpenCV、Pillow、NumPy
-- 人脸关键点：MediaPipe Python、OpenCV、dlib、InsightFace
-- 视频导出：FFmpeg 或 OpenCV VideoWriter
-- 打包：PyInstaller、Briefcase、Nuitka
+- UI: PySide6 / PyQt
+- EXIF: Pillow, exifread, piexif
+- Image processing: OpenCV, Pillow, NumPy
+- Face landmarks: MediaPipe Python, OpenCV, dlib, InsightFace
+- Video export: FFmpeg or OpenCV VideoWriter
+- Packaging: PyInstaller, Briefcase, Nuitka
 
-### 5.2 工作方式
+### 5.2 How it works
 
-整个应用主要用 Python 编写。UI 使用 Qt，图像处理、模型推理和视频生成都在 Python 侧完成。
+The whole application is written mainly in Python. The UI uses Qt, while image processing, model inference, and video generation all happen on the Python side.
 
-### 5.3 优点
+### 5.3 Pros
 
-- 算法开发效率非常高
-- OpenCV、MediaPipe、NumPy、Pillow 生态成熟
-- 很适合快速验证人脸对齐算法
-- 调用 FFmpeg 简单
-- 对技术原型和内部工具非常友好
+- Extremely high velocity for algorithm development
+- OpenCV, MediaPipe, NumPy, and Pillow form a mature ecosystem
+- Very well suited to quickly validating the face alignment algorithm
+- Calling FFmpeg is simple
+- Very friendly for technical prototypes and internal tools
 
-### 5.4 缺点
+### 5.4 Cons
 
-- 打包和跨平台分发容易踩坑
-- 安装包可能很大
-- UI 质感通常不如 Web UI 或原生 UI
-- Python 运行时、模型、OpenCV、FFmpeg 一起打包会比较重
-- macOS 签名、公证和 Windows 杀毒误报需要处理
+- Packaging and cross-platform distribution are full of pitfalls
+- The installer may be very large
+- The UI usually feels less polished than a web UI or a native UI
+- Packaging the Python runtime, models, OpenCV, and FFmpeg together gets heavy
+- macOS signing and notarization, and Windows antivirus false positives, both need handling
 
-### 5.5 适合情况
+### 5.5 When it fits
 
-- 先做算法验证版或内部测试版
-- 团队熟悉 Python/CV
-- 更重视处理能力而不是 UI 精致度
-- 后续可能把算法核心迁移到其他客户端
+- You want an algorithm validation build or an internal test build first
+- The team knows Python/CV
+- Processing capability matters more than UI polish
+- The algorithm core may be ported to another client later
 
-## 6. 方案四：Flutter Desktop + 原生插件 + FFmpeg
+## 6. Option 4: Flutter Desktop + native plugins + FFmpeg
 
-### 6.1 技术组成
+### 6.1 Stack
 
-- UI：Flutter
-- 业务逻辑：Dart
-- 原生插件：Swift/Kotlin/C++/Rust
-- 图像处理：OpenCV、原生图像库或 Rust/C++ 模块
-- 人脸关键点：MediaPipe、ML Kit、ONNX Runtime、平台原生能力
-- 视频导出：FFmpeg Kit、原生 FFmpeg 或平台编码器
+- UI: Flutter
+- Business logic: Dart
+- Native plugins: Swift/Kotlin/C++/Rust
+- Image processing: OpenCV, a native image library, or a Rust/C++ module
+- Face landmarks: MediaPipe, ML Kit, ONNX Runtime, or platform-native capabilities
+- Video export: FFmpeg Kit, native FFmpeg, or a platform encoder
 
-### 6.2 工作方式
+### 6.2 How it works
 
-Flutter 负责跨平台 UI，重计算能力通过原生插件实现。适合未来同时覆盖桌面和移动端。
+Flutter handles the cross-platform UI, and heavy computation is implemented via native plugins. Well suited to covering both desktop and mobile in the future.
 
-### 6.3 优点
+### 6.3 Pros
 
-- UI 体验好，跨平台一致性强
-- 后续扩展到 iOS/Android 更自然
-- 性能比 Electron UI 更可控
-- 适合做消费者级应用
+- Good UI experience with strong cross-platform consistency
+- Extending to iOS/Android later is more natural
+- Performance is more controllable than an Electron UI
+- Well suited to a consumer-grade application
 
-### 6.4 缺点
+### 6.4 Cons
 
-- 桌面端生态不如移动端成熟
-- 人脸检测、FFmpeg、文件权限等需要较多插件适配
-- 复杂原生插件开发成本高
-- 复用网页版代码能力弱
+- The desktop ecosystem is less mature than the mobile one
+- Face detection, FFmpeg, file permissions, and more all need plugin work
+- Developing complex native plugins is costly
+- Little ability to reuse the web version's code
 
-### 6.5 适合情况
+### 6.5 When it fits
 
-- 未来明确要做移动 App
-- 团队熟悉 Flutter
-- 希望 UI 精致、跨平台统一
-- 愿意投入原生插件开发
+- You definitely plan a mobile app later
+- The team knows Flutter
+- You want a polished, cross-platform-consistent UI
+- You are willing to invest in native plugin development
 
-## 7. 方案五：macOS 原生 App，Swift/SwiftUI + Vision + AVFoundation
+## 7. Option 5: native macOS app — Swift/SwiftUI + Vision + AVFoundation
 
-### 7.1 技术组成
+### 7.1 Stack
 
-- UI：SwiftUI / AppKit
-- EXIF：ImageIO
-- 人脸和眼睛：Apple Vision
-- 图像处理：Core Image / Metal
-- 视频导出：AVFoundation
+- UI: SwiftUI / AppKit
+- EXIF: ImageIO
+- Faces and eyes: Apple Vision
+- Image processing: Core Image / Metal
+- Video export: AVFoundation
 
-### 7.2 工作方式
+### 7.2 How it works
 
-完全使用 Apple 原生框架实现 macOS 版本。利用 Vision 进行人脸和关键点检测，Core Image/Metal 处理图像，AVFoundation 导出视频。
+The macOS version is built entirely on Apple's native frameworks: Vision for face and landmark detection, Core Image/Metal for image processing, and AVFoundation for video export.
 
-### 7.3 优点
+### 7.3 Pros
 
-- macOS 体验最好
-- 性能优秀
-- 安装包相对可控
-- 系统框架稳定，无需额外打包大型模型
-- 视频导出和硬件加速能力强
-- 隐私叙事非常自然
+- The best experience on macOS
+- Excellent performance
+- A relatively manageable installer size
+- Stable system frameworks, with no need to bundle large models
+- Strong video export and hardware acceleration
+- The privacy story is very natural
 
-### 7.4 缺点
+### 7.4 Cons
 
-- 只能覆盖 Apple 平台
-- Windows 用户无法使用
-- 后续跨平台成本高
-- 需要原生 Apple 开发能力
+- Covers only Apple platforms
+- Windows users cannot use it
+- Going cross-platform later is expensive
+- Requires native Apple development skills
 
-### 7.5 适合情况
+### 7.5 When it fits
 
-- 第一批用户主要是 Mac 用户
-- 追求高质量体验
-- 愿意先做单平台精品工具
+- Your first users are mainly Mac users
+- You are after a high-quality experience
+- You are willing to build a single-platform, high-craft tool first
 
-## 8. 方案六：Windows 原生 App，.NET/WPF/WinUI + OpenCV/ONNX + FFmpeg
+## 8. Option 6: native Windows app — .NET/WPF/WinUI + OpenCV/ONNX + FFmpeg
 
-### 8.1 技术组成
+### 8.1 Stack
 
-- UI：WPF / WinUI 3
-- 业务逻辑：C#
-- 图像处理：OpenCVSharp、ImageSharp
-- 人脸关键点：ONNX Runtime、OpenCV、MediaPipe 侧车进程
-- 视频导出：FFmpeg 或 Media Foundation
+- UI: WPF / WinUI 3
+- Business logic: C#
+- Image processing: OpenCVSharp, ImageSharp
+- Face landmarks: ONNX Runtime, OpenCV, a MediaPipe sidecar process
+- Video export: FFmpeg or Media Foundation
 
-### 8.2 优点
+### 8.2 Pros
 
-- Windows 原生体验好
-- 文件系统、硬件编码、安装包能力成熟
-- C# 做桌面应用效率较高
-- 对 Windows 用户稳定
+- A good native Windows experience
+- Mature file system, hardware encoding, and installer capabilities
+- C# is fairly efficient for desktop applications
+- Stable for Windows users
 
-### 8.3 缺点
+### 8.3 Cons
 
-- 只能覆盖 Windows
-- 需要另做 macOS 版本
-- UI 和算法生态不如 Python 灵活
-- 复用网页版代码较少
+- Covers only Windows
+- A separate macOS version is needed
+- The UI and algorithm ecosystems are less flexible than Python's
+- Little reuse of the web version's code
 
-### 8.4 适合情况
+### 8.4 When it fits
 
-- 目标用户主要是 Windows
-- 团队熟悉 .NET
-- 希望做一个 Windows 专用工具
+- Your target users are mainly on Windows
+- The team knows .NET
+- You want a Windows-only tool
 
-## 9. 方案七：C++ / Qt + OpenCV + FFmpeg
+## 9. Option 7: C++ / Qt + OpenCV + FFmpeg
 
-### 9.1 技术组成
+### 9.1 Stack
 
-- UI：Qt Widgets / Qt Quick
-- 图像处理：OpenCV
-- 人脸关键点：MediaPipe C++、dlib、ONNX Runtime、OpenCV
-- 视频导出：FFmpeg
+- UI: Qt Widgets / Qt Quick
+- Image processing: OpenCV
+- Face landmarks: MediaPipe C++, dlib, ONNX Runtime, OpenCV
+- Video export: FFmpeg
 
-### 9.2 优点
+### 9.2 Pros
 
-- 性能强
-- 跨平台能力成熟
-- 对图像处理和视频处理非常直接
-- 可控性最高
-- 适合做专业级工具
+- Strong performance
+- Mature cross-platform support
+- Very direct for image and video processing
+- The highest degree of control
+- Suited to a professional-grade tool
 
-### 9.3 缺点
+### 9.3 Cons
 
-- 开发成本高
-- UI 迭代慢
-- 工程复杂度高
-- 对小型免费工具来说可能过重
+- High development cost
+- Slow UI iteration
+- High engineering complexity
+- Probably too heavy for a small free tool
 
-### 9.4 适合情况
+### 9.4 When it fits
 
-- 需要长期做专业本地工具
-- 团队有 C++/Qt 经验
-- 对性能和稳定性要求极高
+- You need a professional local tool for the long term
+- The team has C++/Qt experience
+- Performance and stability requirements are extremely high
 
-## 10. 核心模块技术建议
+## 10. Recommendations for the core modules
 
-### 10.1 人脸关键点检测
+### 10.1 Face landmark detection
 
-推荐优先级：
+Recommended, in order:
 
 1. MediaPipe Face Landmarker
-2. Apple Vision，适用于 macOS/iOS 原生方案
-3. ONNX Runtime + 人脸关键点模型
-4. OpenCV/dlib，作为备选或原型
+2. Apple Vision, for a native macOS/iOS approach
+3. ONNX Runtime plus a face landmark model
+4. OpenCV/dlib, as a fallback or for prototyping
 
-### 10.2 视频导出
+### 10.2 Video export
 
-推荐：
+Recommended:
 
-- 桌面跨平台：原生 FFmpeg
-- macOS 原生：AVFoundation
-- Windows 原生：FFmpeg 或 Media Foundation
+- Cross-platform desktop: native FFmpeg
+- Native macOS: AVFoundation
+- Native Windows: FFmpeg or Media Foundation
 
-桌面 App 不建议再优先使用 ffmpeg.wasm。原生 FFmpeg 的速度、稳定性、格式支持都更好。
+A desktop app should no longer prefer ffmpeg.wasm. Native FFmpeg is better on speed, stability, and format support.
 
-### 10.3 图像处理
+### 10.3 Image processing
 
-推荐：
+Recommended:
 
-- Python 原型：OpenCV + NumPy
-- Electron：sharp + OpenCV/ONNX
-- Tauri/Rust：image/imageproc + OpenCV/libvips binding
-- macOS：Core Image / Metal
-- C++：OpenCV
+- Python prototype: OpenCV + NumPy
+- Electron: sharp + OpenCV/ONNX
+- Tauri/Rust: image/imageproc + an OpenCV/libvips binding
+- macOS: Core Image / Metal
+- C++: OpenCV
 
-### 10.4 项目保存
+### 10.4 Saving projects
 
-本地 App 比网页更适合支持项目保存。
+A local app is better suited than the web to supporting saved projects.
 
-建议保存：
+Worth saving:
 
-- 原照片路径或导入副本
-- 每张照片的 EXIF 时间
-- 人脸框和眼睛关键点
-- 用户选择的目标人物
-- 手动修正点位
-- 排序
-- 导出参数
+- The original photo paths, or imported copies
+- Each photo's EXIF time
+- Face boxes and eye landmarks
+- The target person the user picked
+- Manually corrected points
+- The ordering
+- The export settings
 
-## 11. 方案对比表
+## 11. Comparison table
 
-| 方案 | 开发效率 | 性能 | 包体 | 跨平台 | UI 体验 | 算法便利性 | 推荐阶段 |
+| Option | Dev velocity | Performance | Bundle size | Cross-platform | UI experience | Algorithm convenience | Recommended stage |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| Electron + Node | 高 | 中 | 大 | 强 | 强 | 中 | 桌面 MVP |
-| Tauri + Rust | 中 | 高 | 小 | 强 | 强 | 中低 | 长期本地版 |
-| Python + Qt | 高 | 中高 | 大 | 中 | 中 | 很高 | 算法原型 |
-| Flutter Desktop | 中 | 中高 | 中 | 强 | 强 | 中 | 桌面+移动路线 |
-| macOS 原生 | 中 | 很高 | 小 | 弱 | 很强 | 中 | Mac 精品版 |
-| Windows 原生 | 中 | 高 | 中 | 弱 | 强 | 中 | Windows 专用版 |
-| C++/Qt | 低 | 很高 | 中 | 强 | 中 | 高 | 专业长期版 |
+| Electron + Node | High | Medium | Large | Strong | Strong | Medium | Desktop MVP |
+| Tauri + Rust | Medium | High | Small | Strong | Strong | Medium-low | Long-term local version |
+| Python + Qt | High | Medium-high | Large | Medium | Medium | Very high | Algorithm prototype |
+| Flutter Desktop | Medium | Medium-high | Medium | Strong | Strong | Medium | Desktop + mobile path |
+| Native macOS | Medium | Very high | Small | Weak | Very strong | Medium | Mac flagship version |
+| Native Windows | Medium | High | Medium | Weak | Strong | Medium | Windows-only version |
+| C++/Qt | Low | Very high | Medium | Strong | Medium | High | Professional long-term version |
 
-## 12. 推荐路线
+## 12. Recommended paths
 
-### 12.1 如果你想最快做出本地 App MVP
+### 12.1 If you want a local app MVP as fast as possible
 
-推荐：
+Recommended:
 
-> Electron + React + Node.js + MediaPipe/ONNX + 原生 FFmpeg
+> Electron + React + Node.js + MediaPipe/ONNX + native FFmpeg
 
-理由：
+Why:
 
-- 复用网页方案最多
-- 开发速度最快
-- UI 能做得比较好
-- 本地 FFmpeg 能解决导出性能和稳定性问题
-- 适合免费小工具快速发布
+- Reuses the most from the web approach
+- The fastest to develop
+- The UI can be made quite good
+- Local FFmpeg solves export performance and stability
+- Well suited to shipping a small free tool quickly
 
-### 12.2 如果你想做轻量、高质量、长期维护的本地 App
+### 12.2 If you want a lightweight, high-quality, long-maintained local app
 
-推荐：
+Recommended:
 
-> Tauri + React/Vue + Rust 后端 + 原生 FFmpeg + ONNX/MediaPipe
+> Tauri + React/Vue + a Rust backend + native FFmpeg + ONNX/MediaPipe
 
-理由：
+Why:
 
-- 更轻
-- 更符合本地隐私工具气质
-- 性能更好
-- 长期架构更干净
+- Lighter
+- Better matches the character of a local privacy tool
+- Better performance
+- A cleaner architecture for the long term
 
-代价是工程难度更高。
+The cost is higher engineering difficulty.
 
-### 12.3 如果你想先把算法做好
+### 12.3 If you want to get the algorithm right first
 
-推荐：
+Recommended:
 
 > Python + PySide6 + OpenCV + MediaPipe + FFmpeg
 
-理由：
+Why:
 
-- 算法验证最快
-- 调试人脸点、对齐参数、视频生成最方便
-- 很适合先做内部工具
+- The fastest way to validate the algorithm
+- The most convenient for debugging face points, alignment parameters, and video generation
+- Very well suited to building an internal tool first
 
-但不建议直接作为最终消费者产品，除非能接受打包和 UI 质感问题。
+But it should not be shipped directly as the final consumer product unless you can accept the packaging and UI polish problems.
 
-### 12.4 如果第一批用户主要是 Mac 用户
+### 12.4 If your first users are mainly Mac users
 
-推荐：
+Recommended:
 
 > SwiftUI + Vision + Core Image + AVFoundation
 
-理由：
+Why:
 
-- 体验最好
-- 性能强
-- 不需要打包大模型和 FFmpeg
-- 和 macOS 隐私、本地照片处理的叙事非常匹配
+- The best experience
+- Strong performance
+- No need to bundle large models or FFmpeg
+- Matches the macOS story about privacy and local photo processing very well
 
-缺点是不能覆盖 Windows。
+The downside is that it does not cover Windows.
 
-## 13. 总体结论
+## 13. Overall conclusion
 
-本地 App 版本我建议有两条现实路线：
+For a local app version, there are two realistic paths:
 
-1. 快速产品路线：Electron + Node.js + 原生 FFmpeg
-2. 长期精品路线：Tauri + Rust + 原生 FFmpeg
+1. The fast product path: Electron + Node.js + native FFmpeg
+2. The long-term flagship path: Tauri + Rust + native FFmpeg
 
-如果这个项目目前还在验证产品价值，优先 Electron。  
-如果你已经确定要长期做一个轻量桌面工具，优先 Tauri。  
-如果你还没验证算法效果，先用 Python 做一个内部原型最快。
-
+If the project is still validating product value, prefer Electron.  
+If you have already decided to build a lightweight desktop tool for the long term, prefer Tauri.  
+If you have not yet validated how well the algorithm works, building an internal prototype in Python first is the fastest route.

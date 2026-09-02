@@ -1,115 +1,115 @@
-# Photo Align 开发任务
+# Photo Align development tasks
 
-状态约定：`[ ]` 未开始，`[~]` 进行中，`[x]` 已完成。每完成一项，应在任务下记录验证命令与结果。
+Status convention: `[ ]` not started, `[~]` in progress, `[x]` done. When you finish an item, record the verification command and its result underneath it.
 
-## 阶段 0：建立基线（P0）
+## Phase 0: Establish a baseline (P0)
 
-- [ ] 记录当前 Demo 的识别成功率、待确认数量、导出耗时与峰值内存
-  - 使用 `demo/manifest.json` 前 30 张照片。
-  - 分别测试 Chrome/Safari 支持的输出格式。
-  - 验收：结果记录在本文件或 PR 描述中，可用于改造前后对比。
-- [~] 补齐最小自动化验证
-  - 为日期解析、照片排序、目标眼位和帧时长计算增加单元测试。
-  - 增加 Demo 加载、选择人物、修改日期、跳过照片、导出的浏览器冒烟测试。
-  - 验收：提供 `npm test`，构建和测试均通过。
-  - 进度：已增加日期与导出帧计划的 5 个单元测试；浏览器冒烟测试待补。
+- [ ] Record the current demo's detection success rate, review count, export time, and peak memory
+  - Use the first 30 photos from `demo/manifest.json`.
+  - Test each output format supported by Chrome and Safari separately.
+  - Acceptance: results are recorded in this file or in the PR description, so before/after comparisons are possible.
+- [~] Fill in a minimum of automated verification
+  - Add unit tests for date parsing, photo sorting, target eye position, and frame duration calculation.
+  - Add browser smoke tests for loading the demo, picking a subject, editing a date, skipping a photo, and exporting.
+  - Acceptance: `npm test` is available, and both the build and the tests pass.
+  - Progress: 5 unit tests added for dates and the export frame plan; browser smoke tests still to be written.
 
-## 阶段 1：重构导出管线（P0）
+## Phase 1: Rework the export pipeline (P0)
 
-- [~] 移除全量 `ImageData[]` 帧缓存
-  - 将流程改为“解码图片 -> 渲染一帧 -> 立即编码/写入”。
-  - 视频优先评估 WebCodecs；兼容模式可使用 MediaRecorder。
-  - GIF 使用逐帧写入，不能保留全部 RGBA 帧。
-  - 验收：30 张 Demo 导出期间峰值内存保持稳定；100 张普通照片不会因帧缓存导致页面崩溃。
-  - 进度：已改为复用单一画布并逐帧写入 GIF/MediaRecorder；真实浏览器内存基线待记录。
-- [x] 建立图片解码缓存
-  - 每张照片只解码一次，导出结束后主动释放 ImageBitmap/缓存资源。
-  - 验收：导出循环中不再按帧调用 `loadImage()`。
-- [x] 修复速度语义
-  - 统一使用固定 FPS，通过照片停留时长计算帧数。
-  - GIF 和视频在相同速度下应具有近似一致的总时长。
-  - 验收：0.5x、1x、2x 三档总时长误差不超过一帧。
-- [x] 明确输出格式能力
-  - 启动时检测 MP4/WebM/GIF 能力。
-  - 不支持 MP4 时禁用或改名为 WebM，不得静默改变格式。
-  - 验收：界面选项、MIME、扩展名和下载文件一致。
-- [x] 增加取消导出和错误恢复
-  - 导出过程中允许取消，释放编码器、媒体轨道和临时资源。
-  - 失败后用户可以直接重试，不必刷新或重新分析照片。
+- [~] Remove the full `ImageData[]` frame buffer
+  - Change the flow to "decode image -> render one frame -> encode/write immediately".
+  - For video, evaluate WebCodecs first; MediaRecorder can serve as the compatibility path.
+  - GIF must be written frame by frame; all RGBA frames cannot be kept in memory.
+  - Acceptance: peak memory stays stable while exporting the 30 demo photos; 100 ordinary photos do not crash the page because of the frame buffer.
+  - Progress: now reuses a single canvas and writes frames one at a time to GIF/MediaRecorder; a real-browser memory baseline still needs to be recorded.
+- [x] Add an image decode cache
+  - Decode each photo only once, and actively release ImageBitmap/cache resources when the export ends.
+  - Acceptance: `loadImage()` is no longer called per frame inside the export loop.
+- [x] Fix the semantics of "speed"
+  - Use a fixed FPS throughout, and derive the frame count from each photo's hold duration.
+  - GIF and video should have roughly the same total duration at the same speed.
+  - Acceptance: total duration at 0.5x, 1x, and 2x is within one frame of the expected value.
+- [x] Make output format capabilities explicit
+  - Detect MP4/WebM/GIF support at startup.
+  - When MP4 is unsupported, disable it or rename it to WebM — never change the format silently.
+  - Acceptance: the UI option, MIME type, extension, and downloaded file all agree.
+- [x] Add export cancellation and error recovery
+  - Allow cancelling mid-export, releasing the encoder, media tracks, and temporary resources.
+  - After a failure the user can retry directly, without refreshing or re-analyzing the photos.
 
-## 阶段 2：修复数据与对齐正确性（P1）
+## Phase 2: Fix data and alignment correctness (P1)
 
-- [ ] 修复 EXIF 日期时区偏移
-  - 使用本地年月日格式化，不通过 `toISOString()` 截取日期。
-  - 覆盖东八区、跨日和无 EXIF 文件名回退测试。
-- [ ] 修复缩略图人脸框坐标
-  - 正确计算 `object-fit: cover` 的缩放与裁切偏移，或将缩略图改成不裁切布局。
-  - 验收：横图、竖图和方图中的人脸框均覆盖实际人脸。
-- [ ] 切换人物后重新评估质量
-  - 将评分逻辑提取为纯函数。
-  - 更新选中人物时同步更新 score、warning 和 review 状态。
-- [ ] 校准“自然”和“严格”对齐
-  - 明确定义两种模式的眼位、旋转和自然偏移规则。
-  - 严格模式应保证双眼目标点重合；自然模式需限制漂移幅度。
-  - 验收：使用固定测试图比较眼位误差，并防止回归。
-- [ ] 统一时间线与输出顺序
-  - 时间线默认展示实际导出顺序。
-  - 日期缺失照片应有明确且稳定的排序策略。
+- [ ] Fix the EXIF date timezone offset
+  - Format using the local year/month/day rather than slicing the output of `toISOString()`.
+  - Cover UTC+8, day-boundary, and no-EXIF filename-fallback cases with tests.
+- [ ] Fix face box coordinates on thumbnails
+  - Correctly account for the scale and crop offset introduced by `object-fit: cover`, or change the thumbnail to a non-cropping layout.
+  - Acceptance: face boxes land on the actual face in landscape, portrait, and square photos.
+- [ ] Re-evaluate quality after switching subjects
+  - Extract the scoring logic into a pure function.
+  - When the selected face changes, update score, warning, and review status along with it.
+- [ ] Calibrate "natural" and "strict" alignment
+  - Define the eye position, rotation, and natural-offset rules for both modes explicitly.
+  - Strict mode should place both eyes exactly on their target points; natural mode needs a bounded drift.
+  - Acceptance: compare eye position error against fixed test images, and guard against regressions.
+- [ ] Make the timeline order match the output order
+  - The timeline shows the actual export order by default.
+  - Photos with no date need a clear and stable sort strategy.
 
-## 阶段 3：完善核心工作流（P1）
+## Phase 3: Round out the core workflow (P1)
 
-- [ ] 增加低分辨率动态预览
-  - 支持播放、暂停、上一张、下一张和循环。
-  - 参数变化后快速更新预览，不要求先完整导出。
-- [ ] 增加“待处理照片”工作流
-  - 提供全部/待确认/无法识别/已跳过筛选。
-  - 提供“下一张问题照片”操作。
-  - 多人照片明确提示用户选择主角。
-- [ ] 完善照片管理
-  - 支持追加照片、删除单张、批量跳过、恢复和拖动排序。
-  - 超过 100 张、格式不支持或文件损坏时显示明确反馈，不得静默忽略。
-- [ ] 增加导出摘要
-  - 生成前展示格式、分辨率、预计时长、照片数量和浏览器兼容性。
-  - 生成后保留网页预览、重新生成和下载入口。
+- [ ] Add a low-resolution motion preview
+  - Support play, pause, previous, next, and loop.
+  - Update the preview quickly when settings change, without requiring a full export first.
+- [ ] Add a "photos needing attention" workflow
+  - Provide all / needs review / no face found / skipped filters.
+  - Provide a "next problem photo" action.
+  - Prompt the user clearly to pick a subject in group photos.
+- [ ] Round out photo management
+  - Support appending photos, deleting one, bulk skipping, restoring, and drag-to-reorder.
+  - Show clear feedback when there are more than 100 photos, an unsupported format, or a corrupt file — never ignore it silently.
+- [ ] Add an export summary
+  - Before generating, show the format, resolution, estimated duration, photo count, and browser compatibility.
+  - After generating, keep the in-page preview, a regenerate action, and the download link.
 
-## 阶段 4：移动端、样式与可访问性（P2）
+## Phase 4: Mobile, styling, and accessibility (P2)
 
-- [ ] 优化移动端信息顺序
-  - 预览优先显示，设置改为折叠区域或底部抽屉。
-  - 验收：320px 宽度下无溢出、遮挡和不可操作控件。
-- [ ] 完善键盘和屏幕阅读器支持
-  - 可点击卡片使用语义按钮或补齐 `tabIndex`/键盘事件。
-  - 人脸选择框增加可读名称和选中状态。
-  - 分段控件增加 `aria-pressed`，所有焦点状态清晰可见。
-- [ ] 改善上传反馈
-  - 增加拖拽进入状态、模型加载进度、分析进度、失败原因和重试按钮。
-- [ ] 提升参数可理解性
-  - 参数名称保持简短，通过即时预览表达“自然/严格”和过渡差异。
-  - 不增加大段使用说明或营销式页面。
+- [ ] Improve the information order on mobile
+  - Show the preview first, and move settings into a collapsible section or a bottom sheet.
+  - Acceptance: at 320px wide there is no overflow, occlusion, or unusable control.
+- [ ] Round out keyboard and screen reader support
+  - Clickable cards use semantic buttons, or gain proper `tabIndex`/keyboard handlers.
+  - Face selection boxes get readable names and a selected state.
+  - Segmented controls get `aria-pressed`, and every focus state is clearly visible.
+- [ ] Improve upload feedback
+  - Add a drag-over state, model loading progress, analysis progress, failure reasons, and a retry button.
+- [ ] Make the settings easier to understand
+  - Keep setting names short, and convey the "natural vs strict" and transition differences through the live preview.
+  - Do not add long instructional copy or a marketing-style page.
 
-## 阶段 5：工程化与发布（P2）
+## Phase 5: Engineering and release (P2)
 
-- [ ] 拆分 `src/App.tsx`
-  - 建议边界：`face-detection`、`photo-metadata`、`alignment-renderer`、`export`、状态管理及 UI 组件。
-  - 纯计算逻辑不得依赖 React 或 DOM，便于测试。
-- [ ] 将识别和编码移入 Web Worker
-  - 主线程只负责交互、预览和进度展示。
-  - 验收：分析及导出时页面滚动和按钮反馈保持流畅。
-- [ ] 增加 `lint`、`test` 和 CI
-  - CI 至少执行依赖安装、类型检查、测试和生产构建。
-- [ ] 更新存在安全公告的依赖
-  - 升级 Vite 和 `js-yaml` 依赖链，运行 `npm audit`、测试和构建。
-- [ ] 优化首屏资源
-  - MediaPipe 在用户开始 Demo/上传后再加载。
-  - 显示约 36MB 模型资源的下载和缓存状态。
-- [ ] 验证 GitHub Pages 发布
-  - 执行 `npm run build:pages`。
-  - 检查 `/photo_align/` base path、Demo、WASM、模型和导出功能。
+- [ ] Split up `src/App.tsx`
+  - Suggested boundaries: `face-detection`, `photo-metadata`, `alignment-renderer`, `export`, state management, and UI components.
+  - Pure computation must not depend on React or the DOM, so it stays testable.
+- [ ] Move detection and encoding into a Web Worker
+  - The main thread only handles interaction, preview, and progress display.
+  - Acceptance: page scrolling and button feedback stay smooth during analysis and export.
+- [ ] Add `lint`, `test`, and CI
+  - CI runs at least dependency install, type checking, tests, and a production build.
+- [ ] Update dependencies with security advisories
+  - Upgrade the Vite and `js-yaml` dependency chains, then run `npm audit`, the tests, and the build.
+- [ ] Optimize first-paint resources
+  - Load MediaPipe only after the user starts the demo or an upload.
+  - Show download and cache status for the roughly 36MB of model assets.
+- [ ] Verify the GitHub Pages release
+  - Run `npm run build:pages`.
+  - Check the `/photo_align/` base path, the demo, WASM, the model, and export.
 
-## 完成定义
+## Definition of done
 
-- 100 张照片可以完成分析和导出，期间页面可响应且没有持续增长的资源泄漏。
-- Demo 的识别、排序、多人选择、日期编辑、跳过、预览和导出流程均可用。
-- GIF/视频速度、格式和界面承诺一致。
-- 桌面端与移动端主流程无阻塞问题，键盘可完成主要操作。
-- `npm run build`、`npm test`、lint 和浏览器冒烟测试全部通过。
+- 100 photos can be analyzed and exported, with the page staying responsive and no steadily growing resource leak.
+- The demo's detection, sorting, multi-person selection, date editing, skipping, preview, and export flows all work.
+- GIF/video speed and format match what the UI promises.
+- The main flow has no blocking issues on desktop or mobile, and the primary actions can be completed with a keyboard.
+- `npm run build`, `npm test`, lint, and the browser smoke tests all pass.

@@ -1,338 +1,337 @@
-# 人物照片对齐视频工具需求文档
+# Requirements: portrait photo alignment video tool
 
-## 1. 产品概述
+## 1. Product overview
 
-本产品是一个免费、无需登录、完全本地运行的网页工具。用户可以上传一组人物照片，工具在浏览器中识别人脸、眼睛位置和照片拍摄时间，按时间顺序生成自然稳定的人物变化视频或 GIF。
+This product is a free web tool that requires no sign-in and runs entirely locally. The user uploads a set of portrait photos; the tool detects faces, eye positions, and capture times in the browser, then generates a natural, stable video or GIF of how the person changes over time.
 
-产品核心不是专业修图或复杂剪辑，而是帮助普通用户用尽可能少的操作，把一个人在不同时间的照片生成一个自然、好看的变化视频。
+The core of the product is not professional retouching or complex editing. It is to help ordinary users turn photos of one person taken at different times into a natural, good-looking change video with as few steps as possible.
 
-## 2. 产品定位
+## 2. Positioning
 
-### 2.1 一句话描述
+### 2.1 One-line description
 
-上传一个人的多张照片，在本地生成自然对齐的人物时间变化视频。
+Upload several photos of one person and generate a naturally aligned change-over-time video locally.
 
-### 2.2 目标用户
+### 2.2 Target users
 
-- 普通用户
-- 想整理自己、家人、朋友不同年份照片的人
-- 想生成成长记录、变化记录、纪念视频的人
+- Ordinary users
+- People who want to organize photos of themselves, family, or friends across different years
+- People who want to create a growth record, a change record, or a commemorative video
 
-### 2.3 核心价值
+### 2.3 Core value
 
-- 照片完全本地处理，保护隐私
-- 自动识别人脸和拍摄时间，降低操作成本
-- 自动稳定人物脸部，让变化视频更自然
-- 支持在特殊情况中让用户做必要选择
-- 免费、轻量、打开即用
+- Photos are processed entirely locally, protecting privacy
+- Faces and capture times are detected automatically, lowering the effort required
+- The subject's face is stabilized automatically, making the change video feel natural
+- The user can make the necessary choices in the special cases that need them
+- Free, lightweight, usable the moment it opens
 
-## 3. 产品原则
+## 3. Product principles
 
-1. 隐私优先：照片不上传服务器，不创建账号，不长期保存用户数据。
-2. 简单优先：面向普通用户，避免专业剪辑软件式复杂参数。
-3. 自然优先：默认追求视频自然好看，而不是机械地让眼睛完全固定。
-4. 少打扰用户：只有当系统无法可靠判断时，才让用户做选择。
-5. 结果导向：用户的主要目标是快速得到一个可分享的视频或 GIF。
+1. Privacy first: photos are not uploaded to a server, no account is created, and no user data is stored long term.
+2. Simplicity first: aimed at ordinary users, avoiding the complex parameters of professional editing software.
+3. Naturalness first: by default, aim for a video that looks natural rather than mechanically pinning the eyes in place.
+4. Interrupt the user rarely: only ask the user to choose when the system cannot decide reliably.
+5. Results-oriented: the user's main goal is to get a shareable video or GIF quickly.
 
-## 4. 使用场景
+## 4. Use cases
 
-### 4.1 成长记录
+### 4.1 Growth record
 
-用户上传一个人从小时候到现在的照片，工具自动按时间排序并生成成长变化视频。
+The user uploads photos of one person from childhood to the present, and the tool sorts them chronologically and generates a growth video.
 
-### 4.2 人物变化记录
+### 4.2 Change record
 
-用户上传自己或朋友在不同年份、不同阶段的照片，生成时间变化视频。
+The user uploads photos of themselves or a friend from different years and different stages of life, and generates a change-over-time video.
 
-### 4.3 纪念视频
+### 4.3 Commemorative video
 
-用户整理一个人的历史照片，生成适合保存或分享的短视频。
+The user gathers a person's historical photos and generates a short video suitable for keeping or sharing.
 
-## 5. MVP 功能范围
+## 5. MVP scope
 
-### 5.1 照片上传
+### 5.1 Photo upload
 
-用户可以在网页中上传一组照片。
+The user can upload a set of photos on the page.
 
-基础要求：
+Basic requirements:
 
-- 支持批量选择和拖拽上传
-- 第一版最多支持 100 张照片
-- 第一版优先支持 JPG、PNG
-- HEIC 可作为后续增强
-- 上传页明确提示：照片仅在本地处理，不会上传
+- Support batch selection and drag-and-drop upload
+- The first version supports at most 100 photos
+- The first version prioritizes JPG and PNG
+- HEIC can come later as an enhancement
+- The upload page states clearly that photos are processed locally and are never uploaded
 
-### 5.2 本地照片分析
+### 5.2 Local photo analysis
 
-工具在浏览器中完成照片分析。
+The tool performs analysis in the browser.
 
-分析内容：
+What is analyzed:
 
-- 读取照片拍摄时间
-- 检测照片中的人脸
-- 检测目标人脸的双眼位置
-- 判断照片是否有多个人
-- 判断照片质量是否可能影响效果
+- Read the photo's capture time
+- Detect faces in the photo
+- Detect the eye positions of the target face
+- Determine whether the photo contains more than one person
+- Determine whether photo quality might affect the result
 
-拍摄时间处理规则：
+Capture time rules:
 
-- 优先读取 EXIF 拍摄时间
-- 如果没有 EXIF 时间，则标记为“缺少时间”
-- 用户可以手动补充日期
-- 用户也可以选择按上传顺序排列
+- Prefer the EXIF capture time
+- If there is no EXIF time, mark the photo as "missing a date"
+- The user can fill in the date manually
+- The user can also choose to order photos by upload order
 
-### 5.3 人脸和眼睛对齐
+### 5.3 Face and eye alignment
 
-系统基于人脸和双眼关键点进行照片对齐。
+The system aligns photos using the face and eye landmarks.
 
-默认模式为“自然稳定模式”：
+The default is "natural stabilization mode":
 
-- 人脸中心尽量稳定
-- 双眼位置大致稳定
-- 自动处理旋转、缩放和平移
-- 对检测误差进行平滑，避免画面抖动
-- 保留较自然的头部和构图变化
+- The face center stays as stable as possible
+- Eye positions stay roughly stable
+- Rotation, scale, and translation are handled automatically
+- Detection error is smoothed to avoid a jittery picture
+- Fairly natural changes in head pose and composition are preserved
 
-高级模式可提供“严格眼睛对齐”：
+An advanced mode can offer "strict eye alignment":
 
-- 以双眼两个点为主要基准
-- 尽量让所有照片的左眼和右眼位置重合
-- 适合用户希望更明显观察脸部变化的场景
+- The two eye points are the primary reference
+- The left and right eye positions are made to coincide across all photos as closely as possible
+- Suited to users who want to observe facial change more explicitly
 
-### 5.4 异常照片处理
+### 5.4 Handling problem photos
 
-系统只把需要用户决策的照片拿出来。
+The system surfaces only the photos that need a decision from the user.
 
-需要用户处理的情况：
+Cases that need the user:
 
-- 一张照片中检测到多个人
-- 没有读取到拍摄时间
-- 没有检测到人脸
-- 没有可靠检测到眼睛
-- 侧脸、模糊、脸太小等可能影响效果的问题
+- More than one person detected in a photo
+- No capture time could be read
+- No face detected
+- Eyes not detected reliably
+- Issues that may affect the result, such as a profile view, blur, or a face that is too small
 
-用户可执行的操作：
+Actions available to the user:
 
-- 多人照片中选择目标人物
-- 为照片补充日期
-- 跳过某张照片
-- 手动修正眼睛位置
-- 接受系统提示并继续
+- Pick the target person in a group photo
+- Fill in a date for a photo
+- Skip a photo
+- Correct the eye positions by hand
+- Accept the system's note and continue
 
-### 5.5 照片效果评分
+### 5.5 Photo quality score
 
-每张照片分析后，系统给出简单、用户可理解的状态。
+After analyzing each photo, the system gives a simple status the user can understand.
 
-状态建议：
+Suggested statuses:
 
-- 效果很好
-- 可以使用
-- 可能跳动
-- 建议替换
-- 无法识别
+- Looks great
+- Usable
+- May jitter
+- Replace this one
+- No face found
 
-评分目的：
+Purpose of scoring:
 
-- 帮助用户理解为什么某些照片效果不好
-- 降低用户对算法结果的困惑
-- 引导用户替换更合适的照片
+- Help the user understand why some photos do not work well
+- Reduce confusion about the algorithm's results
+- Guide the user toward replacing a photo with a better one
 
-### 5.6 时间线排序
+### 5.6 Timeline ordering
 
-照片默认按拍摄时间排序。
+Photos are sorted by capture time by default.
 
-要求：
+Requirements:
 
-- 用户可以查看排序后的照片时间线
-- 用户可以手动调整照片顺序
-- 缺少日期的照片需要用户确认处理方式
+- The user can view the sorted photo timeline
+- The user can reorder photos manually
+- Photos missing a date need the user to confirm how to handle them
 
-### 5.7 视频预览
+### 5.7 Video preview
 
-用户在导出前可以看到生成效果预览。
+The user can see a preview of the result before exporting.
 
-预览页包含：
+The preview page contains:
 
-- 视频预览区域
-- 照片时间线
-- 导出参数设置
-- 问题照片提示
+- The video preview area
+- The photo timeline
+- Export settings
+- Notices about problem photos
 
-### 5.8 导出设置
+### 5.8 Export settings
 
-第一版只提供少量关键参数。
+The first version offers only a few key settings.
 
-参数包括：
+The settings are:
 
-- 输出格式：MP4、GIF
-- 画幅比例：1:1、4:5、9:16、16:9
-- 播放速度：慢、标准、快，或使用滑杆
-- 日期显示：开启、关闭
-- 过渡效果：无过渡、轻微淡入淡出、慢速融合
-- 画面保留范围：近景脸部、头发和肩膀、尽量保留原构图
-- 对齐模式：自然稳定、严格眼睛对齐
+- Output format: MP4, GIF
+- Aspect ratio: 1:1, 4:5, 9:16, 16:9
+- Playback speed: slow, standard, fast, or a slider
+- Date display: on, off
+- Transition: none, subtle crossfade, slow blend
+- Framing: close-up face, hair and shoulders, keep the original composition as much as possible
+- Alignment mode: natural stabilization, strict eye alignment
 
-导出优先级：
+Export priority:
 
-- 第一优先级：MP4
-- 第二优先级：GIF
+- First priority: MP4
+- Second priority: GIF
 
-原因：
+Why:
 
-- MP4 文件更小
-- 颜色和画质更好
-- 更适合在社交平台和聊天软件中分享
+- MP4 files are smaller
+- Color and image quality are better
+- Better suited to sharing on social platforms and in chat apps
 
-## 6. 推荐用户流程
+## 6. Recommended user flow
 
-### 6.1 上传页
+### 6.1 Upload page
 
-页面目标：让用户快速开始。
+Page goal: let the user start quickly.
 
-主要内容：
+Main content:
 
-- 批量上传入口
-- 本地隐私说明
-- 支持格式和数量提示
+- The batch upload entry point
+- The local privacy statement
+- Supported formats and photo count
 
-推荐文案：
+Suggested copy:
 
-> 上传一个人的多张照片，在本地生成自然对齐的变化视频。
+> Upload several photos of one person and generate a naturally aligned change video locally.
 
-### 6.2 分析页
+### 6.2 Analysis page
 
-页面目标：让用户理解系统正在处理照片。
+Page goal: let the user understand that the system is processing photos.
 
-处理步骤：
+Processing steps:
 
-- 读取照片信息
-- 识别人脸
-- 检测眼睛
-- 按时间排序
-- 生成预览
+- Read photo metadata
+- Detect faces
+- Detect eyes
+- Sort by time
+- Generate the preview
 
-### 6.3 需要确认页
+### 6.3 Needs-confirmation page
 
-页面目标：只处理系统无法自动决定的问题。
+Page goal: handle only the problems the system cannot decide on its own.
 
-展示内容：
+What is shown:
 
-- 多人照片选择目标人物
-- 缺少日期照片补充时间
-- 识别失败照片选择跳过或手动修正
-- 质量较差照片提示
+- Pick the target person for group photos
+- Fill in a time for photos missing a date
+- Skip or manually correct photos where detection failed
+- Notices for low-quality photos
 
-### 6.4 预览编辑页
+### 6.4 Preview and edit page
 
-页面目标：让用户快速得到满意效果。
+Page goal: let the user reach a satisfying result quickly.
 
-页面结构：
+Page structure:
 
-- 左侧或上方：视频预览
-- 右侧或下方：参数设置
-- 底部：照片时间线
+- Left or top: the video preview
+- Right or bottom: the settings
+- Bottom: the photo timeline
 
-用户可以调整：
+The user can adjust:
 
-- 速度
-- 画幅
-- 日期显示
-- 过渡效果
-- 画面保留范围
-- 对齐模式
+- Speed
+- Aspect ratio
+- Date display
+- Transition
+- Framing
+- Alignment mode
 
-### 6.5 导出页
+### 6.5 Export page
 
-页面目标：生成最终结果。
+Page goal: produce the final result.
 
-功能：
+Features:
 
-- 选择 MP4 或 GIF
-- 显示导出进度
-- 完成后提供下载
+- Choose MP4 or GIF
+- Show export progress
+- Offer a download when it finishes
 
-## 7. 不做范围
+## 7. Out of scope
 
-第一版明确不做：
+The first version explicitly does not include:
 
-- 账号系统
-- 云端上传和云端处理
-- 社交社区
-- 复杂模板市场
-- 音乐库
-- 美颜
-- 换脸
-- 年龄预测
-- 自动判断所有照片是否属于同一个人
-- 专业级逐帧剪辑
-- 大量字幕、贴纸、滤镜模板
+- An account system
+- Cloud upload or cloud processing
+- A social community
+- A complex template marketplace
+- A music library
+- Beauty filters
+- Face swapping
+- Age prediction
+- Automatically determining whether every photo is the same person
+- Professional frame-by-frame editing
+- Large libraries of caption, sticker, and filter templates
 
-## 8. 技术方向建议
+## 8. Suggested technical direction
 
-### 8.1 应用形态
+### 8.1 Application form
 
-建议第一版做成纯前端网页工具。
+The first version should be a pure front-end web tool.
 
-原因：
+Why:
 
-- 符合完全本地处理的隐私定位
-- 部署简单
-- 用户打开网页即可使用
-- 不需要账号和服务器存储
+- It matches the fully-local privacy positioning
+- Deployment is simple
+- The user just opens a web page
+- No accounts or server storage are needed
 
-### 8.2 可能使用的前端能力
+### 8.2 Front-end capabilities that may be used
 
-可评估的技术方向：
+Technical directions worth evaluating:
 
-- EXIF 读取：用于获取拍摄时间
-- 浏览器端人脸检测模型：用于检测人脸和眼睛关键点
-- Canvas：用于图像裁剪、旋转、缩放和预览
-- WebCodecs 或 ffmpeg.wasm：用于本地生成视频
-- GIF 编码库：用于导出 GIF
+- EXIF reading: to obtain the capture time
+- An in-browser face detection model: to detect faces and eye landmarks
+- Canvas: for cropping, rotation, scaling, and preview
+- WebCodecs or ffmpeg.wasm: to generate video locally
+- A GIF encoding library: to export GIFs
 
-### 8.3 关键技术风险
+### 8.3 Key technical risks
 
-- 浏览器端处理 100 张高分辨率照片时性能和内存压力较大
-- HEIC 支持在网页中可能复杂
-- 不同人脸角度、遮挡、低清晰度照片会影响眼睛检测
-- 本地视频编码可能耗时较长
-- GIF 文件可能较大且画质有限
+- Processing 100 high-resolution photos in the browser puts significant pressure on performance and memory
+- HEIC support may be complicated on the web
+- Varying face angles, occlusion, and low-resolution photos all degrade eye detection
+- Local video encoding may take a long time
+- GIF files may be large and limited in quality
 
-## 9. 成功标准
+## 9. Success criteria
 
-第一版可以用以下标准判断是否成功：
+The first version can be judged successful by these criteria:
 
-- 用户无需登录即可完成一次生成
-- 30 张常见人物照片能在可接受时间内完成分析
-- 大多数正脸照片能自动识别双眼
-- 多人、缺时间、识别失败等情况能被清楚提示
-- 用户可以在 3 到 5 分钟内生成一个 MP4
-- 默认效果自然，不明显机械抖动
-- 用户知道照片没有上传，隐私感明确
+- The user can complete a generation without signing in
+- 30 ordinary portrait photos can be analyzed in an acceptable amount of time
+- Both eyes are detected automatically in most front-facing photos
+- Multi-person, missing-time, and failed-detection cases are clearly surfaced
+- The user can produce an MP4 within 3 to 5 minutes
+- The default result looks natural, with no obvious mechanical jitter
+- The user knows their photos were not uploaded, and the sense of privacy is clear
 
-## 10. 后续增强方向
+## 10. Future enhancements
 
-可在 MVP 验证后考虑：
+Worth considering once the MVP is validated:
 
-- HEIC 支持
-- 更精细的手动眼睛修正
-- 批量质量筛选
-- 更自然的运动平滑
-- 更多日期样式
-- 背景模糊填充
-- 本地项目保存和恢复
-- 更高质量视频导出
-- 移动端体验优化
+- HEIC support
+- Finer manual eye correction
+- Bulk quality filtering
+- More natural motion smoothing
+- More date styles
+- Blurred background fill
+- Saving and restoring a local project
+- Higher quality video export
+- A better mobile experience
 
-## 11. 待确认问题
+## 11. Open questions
 
-以下问题后续仍需进一步确认：
+The following still need to be settled:
 
-1. 第一版是否必须支持 HEIC，还是先支持 JPG 和 PNG？
-2. 严格眼睛对齐是否作为高级选项放出？
-3. 手动点眼睛的入口是否只在识别失败时出现？
-4. 第一版导出 GIF 是否必须支持，还是先专注 MP4？
-5. 默认视频时长应该按照片数量自动计算，还是由用户明确设置速度？
-6. 是否需要支持移动端直接拍照或从相册选择？
-7. 是否需要在页面中展示“照片不会上传”的更强提示？
-
+1. Must the first version support HEIC, or is JPG and PNG enough to start?
+2. Should strict eye alignment ship as an advanced option?
+3. Should the manual eye-marking entry point appear only when detection fails?
+4. Must the first version export GIF, or should it focus on MP4 first?
+5. Should the default video duration be computed automatically from the photo count, or should the user set the speed explicitly?
+6. Do we need to support taking a photo directly or picking from the camera roll on mobile?
+7. Do we need a stronger "your photos are never uploaded" notice on the page?

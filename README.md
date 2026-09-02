@@ -1,8 +1,8 @@
-# 人像时间线
+# Portrait Timeline
 
 ![screenshot](readme-assets/screenshot.png)
 
-纯前端人脸照片对齐工具。上传照片或查看 Demo，浏览器本地识别人脸、按日期排序、对齐双眼并导出 MP4/GIF。
+A pure front-end face photo alignment tool. Upload photos or open the demo: your browser detects faces locally, sorts by date, aligns the eyes, and exports an MP4 or GIF.
 
 - GitHub: https://github.com/holynova/photo_align
 - Pages: https://holynova.github.io/photo_align/
